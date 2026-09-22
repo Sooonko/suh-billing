@@ -1,9 +1,25 @@
+import { revalidatePath } from 'next/cache';
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { requireAdmin } from '@/lib/supabase/server';
 import type { AnnouncementKind } from '@/lib/types';
 
 const KINDS: AnnouncementKind[] = ['INFO', 'URGENT', 'MAINTENANCE'];
+
+/**
+ * Эхний дэлгэцийн кэшийг хүчингүй болгоно.
+ *
+ * `(resident)/page.tsx` дээр `revalidate = 300` байгаа тул тэр хуудас
+ * статикаар зурагдаж 5 минут кэшлэгддэг. Үүнгүйгээр админ зарлал нэмсэн ч
+ * оршин суугчид 5 минут хүртэл хугацаанд ХАРАХГҮЙ — админ өөрөө ч нэмэгдсэн
+ * эсэхийг шалгаж чадахгүй.
+ *
+ * 5 минутын кэш нь Supabase-ийн үнэгүй давхаргын ачааллыг барихад хэрэгтэй
+ * тул хасахгүй, зөвхөн өөрчлөлт болох мөчид нь хүчингүй болгоно.
+ */
+function revalidateHome() {
+  revalidatePath('/');
+}
 
 /**
  * POST /api/admin/announcements — зарлал нэмэх
@@ -48,6 +64,8 @@ export async function POST(request: Request) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+
+  revalidateHome();
   return NextResponse.json({ ok: true, id: data.id });
 }
 
@@ -79,6 +97,7 @@ export async function PATCH(request: Request) {
   const { error } = await db.from('announcements').update(patch).eq('id', id);
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
+  revalidateHome();
   return NextResponse.json({ ok: true });
 }
 
@@ -94,5 +113,6 @@ export async function DELETE(request: Request) {
   const { error } = await db.from('announcements').delete().eq('id', id);
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
 
+  revalidateHome();
   return NextResponse.json({ ok: true });
 }
