@@ -17,8 +17,19 @@ export const dynamic = 'force-dynamic';
 const CATEGORY_KEYS = CATEGORIES.map((c) => c.key);
 const EMPTY = { billed: 0, paid: 0, balance: 0 };
 
-/** Шүүлтүүрийн төлөв */
-type StateFilter = 'all' | 'debt' | 'paid' | 'over';
+/**
+ * Шүүлтүүрийн төлөв.
+ *
+ * `paid` ба `zero` хоёрыг ЗААВАЛ салгана: хоёулангийн үлдэгдэл 0 боловч
+ * утга нь тэс өөр.
+ *
+ *  · `paid` — нэхэмжилсэн бөгөөд бүрэн хаасан
+ *  · `zero` — нэхэмжлэлийн дүн 0₮. Хоёр шалтгаан байж болно:
+ *      тоолуурын заалт өсөөгүй (хоосон байр), эсвэл Excel-д тэр мөр
+ *      огт байгаагүй. Хоёрдугаарыг чипээр тусад нь хэлнэ — тэр нь
+ *      засах шаардлагатай датаны дутуу.
+ */
+type StateFilter = 'all' | 'debt' | 'paid' | 'over' | 'zero';
 
 const emptyCategories = (): FlatBalance['byCategory'] => ({
   WATER_HEAT: { ...EMPTY },
@@ -51,7 +62,9 @@ export default async function AdminFlatsPage({
   const category = CATEGORY_KEYS.includes(params.category as BillCategory)
     ? (params.category as BillCategory)
     : null;
-  const state: StateFilter = (['debt', 'paid', 'over'] as const).includes(params.state as never)
+  const state: StateFilter = (['debt', 'paid', 'over', 'zero'] as const).includes(
+    params.state as never,
+  )
     ? (params.state as StateFilter)
     : 'all';
   const search = params.q?.trim() ?? '';
@@ -98,39 +111,46 @@ export default async function AdminFlatsPage({
 
   const byFlat = new Map<number, FlatBalance>();
 
+  /**
+   * Нэхэмжлэлийн мөрүүд — ХОЁР хэлбэрт ч хэрэгтэй.
+   *
+   * Сарын хэлбэрт FIFO бодоход БҮХ сарын мөр шаардана (өмнөх сарууд
+   * төлбөрийн хэдийг зарцуулсныг мэдэхгүй бол тооцоо буруу).
+   *
+   * Хуримтлалын хэлбэрт «мөр ОГТ байхгүй» эсэхийг мэдэхэд хэрэгтэй:
+   * v_flat_balances нь НИЙЛБЭР л өгдөг тул 0₮ гэдэг нь «дүн 0» юу,
+   * «мөр байхгүй» юу гэдгийг ялгаж чадахгүй. Хоёрын нэг нь хоосон байр,
+   * нөгөө нь засах шаардлагатай датаны дутуу.
+   */
+  const invoiceRows = await fetchAllRows<{
+    flat_id: string;
+    category: string;
+    billing_month: string;
+    bill_amount: number;
+  }>((from, to) =>
+    db.from('invoices').select('flat_id, category, billing_month, bill_amount').range(from, to),
+  );
+
+  const numberById = new Map<string, number>(flatRows.map((f) => [f.id, f.flat_number]));
+
+  const linesByFlat = new Map<number, InvoiceLine[]>();
+  /** «тоот-ангилал» — нэхэмжлэлийн мөр БАЙГАА хосууд */
+  const hasInvoice = new Set<string>();
+  for (const row of invoiceRows) {
+    const flatNumber = numberById.get(row.flat_id);
+    if (flatNumber === undefined) continue; // идэвхгүй болсон тоот
+    const list = linesByFlat.get(flatNumber) ?? [];
+    list.push({
+      month: row.billing_month,
+      category: row.category as BillCategory,
+      billed: Number(row.bill_amount),
+    });
+    linesByFlat.set(flatNumber, list);
+    hasInvoice.add(`${flatNumber}-${row.category}`);
+  }
+
   if (month) {
     // ── Сарын хэлбэр: FIFO-гоор тэр сарын үлдэгдлийг гаргана ──────────────
-    // FIFO нь БҮХ сарын нэхэмжлэл шаарддаг: төлсөн мөнгөний хэдийг өмнөх
-    // сарууд аль хэдийн зарцуулсныг мэдэхгүй бол тооцоо буруу болно.
-    const invoiceRows = await fetchAllRows<{
-      flat_id: string;
-      category: string;
-      billing_month: string;
-      bill_amount: number;
-    }>((from, to) =>
-      db
-        .from('invoices')
-        .select('flat_id, category, billing_month, bill_amount')
-        .range(from, to),
-    );
-
-    const numberById = new Map<string, number>(
-      flatRows.map((f) => [f.id, f.flat_number]),
-    );
-
-    const linesByFlat = new Map<number, InvoiceLine[]>();
-    for (const row of invoiceRows) {
-      const flatNumber = numberById.get(row.flat_id);
-      if (flatNumber === undefined) continue; // идэвхгүй болсон тоот
-      const list = linesByFlat.get(flatNumber) ?? [];
-      list.push({
-        month: row.billing_month,
-        category: row.category as BillCategory,
-        billed: Number(row.bill_amount),
-      });
-      linesByFlat.set(flatNumber, list);
-    }
-
     const paidByFlat = new Map<number, Map<BillCategory, number>>();
     for (const row of balanceRows) {
       const flatNumber = row.flat_number;
@@ -139,15 +159,15 @@ export default async function AdminFlatsPage({
       paidByFlat.set(flatNumber, map);
     }
 
-    for (const [flatNumber, lines] of linesByFlat) {
-      if (!nameByFlat.has(flatNumber)) continue;
-
+    // БҮХ идэвхтэй тоотыг хамруулна — тэр сард нэхэмжлэл гараагүй айлыг
+    // хаяж болохгүй. Яг тэр айлууд нь «Нэхэмжлээгүй» шүүлтээр олдох ёстой
+    // датаны дутуу. Хуримтлалын хэлбэр ч 210 тоот бүгдийг харуулдаг тул
+    // хоёр хэлбэрийн мөрийн тоо ижил байна.
+    for (const flatNumber of nameByFlat.keys()) {
       const picked = debtForMonth(
-        splitDebtByMonth(lines, paidByFlat.get(flatNumber) ?? new Map()),
+        splitDebtByMonth(linesByFlat.get(flatNumber) ?? [], paidByFlat.get(flatNumber) ?? new Map()),
         month,
       );
-      if (picked.size === 0) continue; // тэр сард нэхэмжлэл гараагүй тоот
-
       const entry: FlatBalance = {
         flatNumber,
         ownerName: nameByFlat.get(flatNumber) ?? null,
@@ -201,10 +221,17 @@ export default async function AdminFlatsPage({
   let flats = [...byFlat.values()].sort((a, b) => a.flatNumber - b.flatNumber);
 
   // Шүүлт нь сонгосон ангиллын дүнгээр, эсвэл бүх ангиллын нийлбэрээр
-  const valueOf = (f: FlatBalance) => (category ? f.byCategory[category].balance : f.totalBalance);
-  if (state === 'debt') flats = flats.filter((f) => valueOf(f) > 0);
-  if (state === 'paid') flats = flats.filter((f) => valueOf(f) === 0);
-  if (state === 'over') flats = flats.filter((f) => valueOf(f) < 0);
+  const balanceOf = (f: FlatBalance) =>
+    category ? f.byCategory[category].balance : f.totalBalance;
+  const billedOf = (f: FlatBalance) => (category ? f.byCategory[category].billed : f.totalBilled);
+
+  if (state === 'debt') flats = flats.filter((f) => balanceOf(f) > 0);
+  // ⚠️ «Төлсөн» нь үлдэгдэл 0 гэсэн нөхцөл ДЭЭР нэхэмжилсэн байхыг шаардана.
+  // Үүнгүйгээр нэхэмжлэл огт гараагүй айл «төлсөн» гэж гарч, бүх багана 0
+  // харагдана — хэрэглэгч андуурах гол шалтгаан байсан.
+  if (state === 'paid') flats = flats.filter((f) => billedOf(f) > 0 && balanceOf(f) === 0);
+  if (state === 'over') flats = flats.filter((f) => balanceOf(f) < 0);
+  if (state === 'zero') flats = flats.filter((f) => billedOf(f) === 0);
 
   if (search) {
     const needle = search.toLowerCase();
@@ -237,6 +264,19 @@ export default async function AdminFlatsPage({
   // Илүү төлсөн айл — админ нүдээр шалгах ёстой тохиолдол. Хуулга буруу
   // ангилалд оногдсон эсвэл айл давхар төлсөн байж магадгүй.
   const overpaid = allFlats.filter((f) => f.totalBalance < 0).length;
+
+  /**
+   * Нэхэмжлэлийн мөр ОГТ байхгүй айл — жинхэнэ датаны дутуу.
+   *
+   * «Дүн 0₮» (заалт өсөөгүй хоосон байр) нь ХЭВИЙН, түүнийг чипээр
+   * анхааруулах шаардлагагүй. Харин Excel-д мөр огт байгаагүй бол тэр
+   * айл нэхэмжлэлгүй үлдэж, өр хуримтлахаа болино — админ мэдэх ёстой.
+   */
+  const missingInvoice = allFlats.filter((f) =>
+    category
+      ? !hasInvoice.has(`${f.flatNumber}-${category}`)
+      : CATEGORIES.some((c) => !hasInvoice.has(`${f.flatNumber}-${c.key}`)),
+  ).length;
 
   // Excel матриц — Client Component-д функц дамжуулж болохгүй тул
   // толгой ба мөрүүдийг ЭНГИЙН массив болгож бэлдэнэ
@@ -348,6 +388,12 @@ export default async function AdminFlatsPage({
                 href: hrefWith({ state: 'paid' }),
                 active: state === 'paid',
               },
+              {
+                key: 'zero',
+                label: 'Нэхэмжлэл 0₮',
+                href: hrefWith({ state: 'zero' }),
+                active: state === 'zero',
+              },
               // Сарын хэлбэрт илүү төлөлт харагдахгүй: FIFO-д нэг сарын
               // үлдэгдэл хэзээ ч сөрөг болдоггүй, илүү мөнгө дараагийн
               // саруудыг хаадаг
@@ -374,11 +420,22 @@ export default async function AdminFlatsPage({
         scope={`${month ? formatBillingMonth(month) : 'Бүх сар'} · ${
           category ? CATEGORY_LABEL[category].toLowerCase() : 'бүх ангилал'
         }${
-          state === 'all' ? '' : state === 'debt' ? (month ? ' · өгөөгүй' : ' · өртэй') : state === 'paid' ? ' · төлсөн' : ' · илүү төлсөн'
+          state === 'all'
+            ? ''
+            : state === 'debt'
+              ? month
+                ? ' · өгөөгүй'
+                : ' · өртэй'
+              : state === 'paid'
+                ? ' · төлсөн'
+                : state === 'zero'
+                  ? ' · нэхэмжлэл 0₮'
+                  : ' · илүү төлсөн'
         }${search ? ` · «${search}»` : ''}`}
         count={flats.length}
         unit="айл"
       >
+        <WarningChip count={missingInvoice} label="айлд нэхэмжлэл ороогүй" />
         {!month && <WarningChip count={overpaid} label="айл илүү төлсөн" />}
       </ResultSummary>
 
