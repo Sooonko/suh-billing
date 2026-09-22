@@ -2,6 +2,13 @@ import Link from 'next/link';
 import { InvoiceImport } from '@/components/admin/InvoiceImport';
 import { SohGenerator } from '@/components/admin/SohGenerator';
 import { InvoiceList, type InvoiceRow } from '@/components/admin/InvoiceList';
+import { ExcelExportButton } from '@/components/admin/filters/ExcelExportButton';
+import { FilterField, FilterPanel } from '@/components/admin/filters/FilterPanel';
+import { MonthStepper } from '@/components/admin/filters/MonthStepper';
+import { ResultSummary } from '@/components/admin/filters/ResultSummary';
+import { SearchBox } from '@/components/admin/filters/SearchBox';
+import { SegmentedNav } from '@/components/admin/filters/SegmentedNav';
+import { WarningChip } from '@/components/admin/filters/WarningChip';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { formatBillingMonth } from '@/lib/format';
 import { CATEGORIES, CATEGORY_LABEL, type BillCategory } from '@/lib/types';
@@ -91,6 +98,51 @@ export default async function AdminInvoicesPage({
     }
   }
 
+  /**
+   * Эмзэг мөрүүдийг тоолно.
+   *
+   * «Заалт нэмэгдээгүй» (зөрүү 0) нь тоолуур эвдэрсэн, эсвэл айл хоосон
+   * байсныг хэлж болно — хоёр тохиолдолд ч админ нүдээр шалгах ёстой.
+   * «Заалт ороогүй» нь Excel-д нүд хоосон үлдсэн гэсэн үг.
+   */
+  const meterPairs = (i: InvoiceRow): [number | null, number | null][] =>
+    i.category === 'WATER_HEAT'
+      ? [
+          [i.hot_prev, i.hot_current],
+          [i.cold_prev, i.cold_current],
+        ]
+      : i.category === 'ELECTRICITY'
+        ? [[i.prev_reading, i.current_reading]]
+        : [];
+
+  const noGrowth = invoices.filter((i) =>
+    meterPairs(i).some(([prev, cur]) => prev !== null && cur !== null && cur - prev === 0),
+  ).length;
+
+  const missing = invoices.filter((i) =>
+    meterPairs(i).some(([prev, cur]) => prev === null || cur === null),
+  ).length;
+
+  // Excel матриц — Client Component-д функц дамжуулж болохгүй тул
+  // толгой ба мөрүүдийг ЭНГИЙН массив болгож бэлдэнэ
+  const exportHeaders =
+    category === 'WATER_HEAT'
+      ? ['Тоот', 'Эзэн', 'Халуун өмнөх', 'Халуун одоо', 'Халуун зөрүү', 'Хүйтэн өмнөх', 'Хүйтэн одоо', 'Хүйтэн зөрүү', 'Нийт м³', 'Төлбөр']
+      : category === 'ELECTRICITY'
+        ? ['Тоот', 'Эзэн', 'Өмнөх заалт', 'Одоогийн заалт', 'Зөрүү', 'кВт·ц', 'Төлбөр']
+        : ['Тоот', 'Эзэн', 'Төлбөр'];
+
+  const gap = (prev: number | null, cur: number | null) =>
+    prev === null || cur === null ? null : Math.round((cur - prev) * 100) / 100;
+
+  const exportRows: (string | number | null)[][] = invoices.map((i) =>
+    category === 'WATER_HEAT'
+      ? [i.flat_number, i.owner_name, i.hot_prev, i.hot_current, gap(i.hot_prev, i.hot_current), i.cold_prev, i.cold_current, gap(i.cold_prev, i.cold_current), i.usage_amount, i.bill_amount]
+      : category === 'ELECTRICITY'
+        ? [i.flat_number, i.owner_name, i.prev_reading, i.current_reading, gap(i.prev_reading, i.current_reading), i.usage_amount, i.bill_amount]
+        : [i.flat_number, i.owner_name, i.bill_amount],
+  );
+
   return (
     <div className="space-y-8">
       <div>
@@ -126,70 +178,55 @@ export default async function AdminInvoicesPage({
         </div>
       ) : (
         <section>
-          {/* Шүүлтүүр — URL-д хадгалагдана, хуудас сэргээхэд алдагдахгүй */}
-          <form className="mb-4 flex flex-wrap items-end gap-3">
-            <input type="hidden" name="tab" value="list" />
-            <div>
-              <label htmlFor="f-cat" className="mb-1 block text-xs font-medium text-slate-500">
-                Ангилал
-              </label>
-              <select
-                id="f-cat"
-                name="category"
-                defaultValue={category}
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900"
-              >
-                {CATEGORIES.map((c) => (
-                  <option key={c.key} value={c.key}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label htmlFor="f-month" className="mb-1 block text-xs font-medium text-slate-500">
-                Сар
-              </label>
-              <select
-                id="f-month"
-                name="month"
-                defaultValue={month}
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900"
-              >
-                {months.map((m) => (
-                  <option key={m} value={m}>
-                    {formatBillingMonth(m)}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label htmlFor="f-q" className="mb-1 block text-xs font-medium text-slate-500">
-                Тоот эсвэл эзэн
-              </label>
-              <input
-                id="f-q"
-                name="q"
-                defaultValue={search}
-                placeholder="193"
-                className="w-40 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900"
+          {/*
+            Шүүлтүүр — URL-д хадгалагдана, хуудас сэргээхэд алдагдахгүй.
+            Ангилал ба сар нь ДАРАХАД ШУУД шүүнэ (холбоос), хайлт л Enter
+            шаардана — бичиж дуусахыг хүлээх ёстой.
+          */}
+          <FilterPanel
+            action={
+              <ExcelExportButton
+                filename={`${CATEGORY_LABEL[category]} ${month}`}
+                sheetName={CATEGORY_LABEL[category]}
+                headers={exportHeaders}
+                rows={exportRows}
               />
-            </div>
+            }
+          >
+            <FilterField label="Ангилал">
+              <SegmentedNav
+                items={CATEGORIES.map((c) => ({
+                  key: c.key,
+                  label: c.label,
+                  // Сар ба хайлтыг ХЭВЭЭР авч явна — ангилал сольсон
+                  // болгонд 9 сар руу гараар буцах нь хэрэггүй ажил
+                  href: `/admin/invoices?${new URLSearchParams({
+                    tab: 'list',
+                    category: c.key,
+                    ...(month ? { month } : {}),
+                    ...(search ? { q: search } : {}),
+                  })}`,
+                  active: c.key === category,
+                }))}
+              />
+            </FilterField>
 
-            <button
-              type="submit"
-              className="rounded-lg bg-slate-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
-            >
-              Шүүх
-            </button>
-          </form>
+            <FilterField label="Сар">
+              <MonthStepper months={months} current={month} />
+            </FilterField>
 
-          <p className="mb-3 text-sm text-slate-500">
-            {CATEGORY_LABEL[category]} · {formatBillingMonth(month)}
-            {search && ` · «${search}» хайлт`}
-          </p>
+            <FilterField label="Хайх">
+              <SearchBox initial={search} />
+            </FilterField>
+          </FilterPanel>
+
+          <ResultSummary
+            scope={`${formatBillingMonth(month)}-ын ${CATEGORY_LABEL[category].toLowerCase()}`}
+            count={invoices.length}
+          >
+            <WarningChip count={noGrowth} label="мөрд заалт нэмэгдээгүй" />
+            <WarningChip count={missing} label="мөрд заалт ороогүй" />
+          </ResultSummary>
 
           <InvoiceList invoices={invoices} category={category} month={month} />
         </section>

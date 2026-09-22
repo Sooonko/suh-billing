@@ -1,6 +1,13 @@
 import { FlatBalanceList, type FlatBalance } from '@/components/admin/FlatBalanceList';
 import { debtForMonth, splitDebtByMonth, type InvoiceLine } from '@/lib/billing/fifo-debt';
 import { formatBillingMonth, formatMnt, shortMonth } from '@/lib/format';
+import { ExcelExportButton } from '@/components/admin/filters/ExcelExportButton';
+import { FilterField, FilterPanel } from '@/components/admin/filters/FilterPanel';
+import { MonthStepper } from '@/components/admin/filters/MonthStepper';
+import { ResultSummary } from '@/components/admin/filters/ResultSummary';
+import { SearchBox } from '@/components/admin/filters/SearchBox';
+import { SegmentedNav } from '@/components/admin/filters/SegmentedNav';
+import { WarningChip } from '@/components/admin/filters/WarningChip';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { fetchAllRows } from '@/lib/supabase/fetch-all';
 import { CATEGORIES, CATEGORY_LABEL, type BillCategory } from '@/lib/types';
@@ -212,6 +219,49 @@ export default async function AdminFlatsPage({
   const totalDebt = allFlats.reduce((s, f) => s + Math.max(f.totalBalance, 0), 0);
   const debtors = allFlats.filter((f) => f.totalBalance > 0).length;
 
+  /** Шүүлт солиход бусад параметрийг хэвээр авч явах URL */
+  const hrefWith = (patch: Record<string, string>) => {
+    const next = new URLSearchParams({
+      ...(month ? { month } : {}),
+      ...(category ? { category } : {}),
+      ...(state !== 'all' ? { state } : {}),
+      ...(search ? { q: search } : {}),
+    });
+    for (const [key, value] of Object.entries(patch)) {
+      if (value) next.set(key, value);
+      else next.delete(key);
+    }
+    return `/admin/flats?${next}`;
+  };
+
+  // Илүү төлсөн айл — админ нүдээр шалгах ёстой тохиолдол. Хуулга буруу
+  // ангилалд оногдсон эсвэл айл давхар төлсөн байж магадгүй.
+  const overpaid = allFlats.filter((f) => f.totalBalance < 0).length;
+
+  // Excel матриц — Client Component-д функц дамжуулж болохгүй тул
+  // толгой ба мөрүүдийг ЭНГИЙН массив болгож бэлдэнэ
+  const exportHeaders = category
+    ? ['Тоот', 'Эзэн', 'Нэхэмжилсэн', 'Төлсөн', 'Үлдэгдэл']
+    : ['Тоот', 'Эзэн', ...CATEGORIES.map((c) => c.label), 'Нийт төлсөн', 'Нийт үлдэгдэл'];
+
+  const exportRows: (string | number | null)[][] = flats.map((f) =>
+    category
+      ? [
+          f.flatNumber,
+          f.ownerName,
+          f.byCategory[category].billed,
+          f.byCategory[category].paid,
+          f.byCategory[category].balance,
+        ]
+      : [
+          f.flatNumber,
+          f.ownerName,
+          ...CATEGORIES.map((c) => f.byCategory[c.key].balance),
+          f.totalPaid,
+          f.totalBalance,
+        ],
+  );
+
   const scope = month ? shortMonth(month) : null;
 
   return (
@@ -249,102 +299,88 @@ export default async function AdminFlatsPage({
         </div>
       </div>
 
-      <form className="mb-4 flex flex-wrap items-end gap-3">
-        <div>
-          <label htmlFor="f-month" className="mb-1 block text-xs font-medium text-slate-500">
-            Сар
-          </label>
-          <select
-            id="f-month"
-            name="month"
-            defaultValue={month ?? ''}
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900"
-          >
-            <option value="">Бүх сар (хуримтлал)</option>
-            {months.map((m) => (
-              <option key={m} value={m}>
-                {formatBillingMonth(m)}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label htmlFor="f-cat" className="mb-1 block text-xs font-medium text-slate-500">
-            Ангилал
-          </label>
-          <select
-            id="f-cat"
-            name="category"
-            defaultValue={category ?? ''}
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900"
-          >
-            <option value="">Бүгд</option>
-            {CATEGORIES.map((c) => (
-              <option key={c.key} value={c.key}>
-                {c.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label htmlFor="f-state" className="mb-1 block text-xs font-medium text-slate-500">
-            Төлөв
-          </label>
-          <select
-            id="f-state"
-            name="state"
-            defaultValue={state}
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900"
-          >
-            <option value="all">Бүгд</option>
-            <option value="debt">{month ? 'Өгөөгүй' : 'Өртэй'}</option>
-            <option value="paid">{month ? 'Төлсөн' : 'Цэвэр (0)'}</option>
-            {/*
-              Сарын хэлбэрт илүү төлөлт харагдахгүй: FIFO-д нэг сарын үлдэгдэл
-              хэзээ ч сөрөг болдоггүй, илүү мөнгө дараагийн саруудыг хаадаг.
-            */}
-            {!month && <option value="over">Илүү төлсөн</option>}
-          </select>
-        </div>
-
-        <div>
-          <label htmlFor="f-q" className="mb-1 block text-xs font-medium text-slate-500">
-            Тоот эсвэл эзэн
-          </label>
-          <input
-            id="f-q"
-            name="q"
-            defaultValue={search}
-            placeholder="193"
-            className="w-40 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900"
+      {/*
+        Ангилал, төлөв, сар нь ДАРАХАД ШУУД шүүнэ (холбоос) — товч дарчихаад
+        дараа нь «Шүүх» дарах шаардлагатай бол юу ч болоогүй шиг санагдана.
+        Хайлт л Enter шаардана: бичиж дуусахыг хүлээх ёстой.
+      */}
+      <FilterPanel
+        action={
+          <ExcelExportButton
+            filename={`Айлууд ${month ?? 'хуримтлал'}${category ? ` ${CATEGORY_LABEL[category]}` : ''}`}
+            sheetName="Айлууд"
+            headers={exportHeaders}
+            rows={exportRows}
           />
-        </div>
+        }
+      >
+        <FilterField label="Сар">
+          <MonthStepper months={months} current={month} allowAll allLabel="Бүх сар (хуримтлал)" />
+        </FilterField>
 
-        <button
-          type="submit"
-          className="rounded-lg bg-slate-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
-        >
-          Шүүх
-        </button>
-      </form>
+        <FilterField label="Ангилал">
+          <SegmentedNav
+            items={[
+              { key: 'all', label: 'Бүгд', href: hrefWith({ category: '' }), active: !category },
+              ...CATEGORIES.map((c) => ({
+                key: c.key,
+                label: c.label,
+                href: hrefWith({ category: c.key }),
+                active: c.key === category,
+              })),
+            ]}
+          />
+        </FilterField>
 
-      <p className="mb-3 text-sm text-slate-500">
-        {month ? formatBillingMonth(month) : 'Бүх сар'}
-        {` · ${category ? CATEGORY_LABEL[category] : 'бүх ангилал'}`}
-        {state !== 'all' &&
-          ` · ${
-            state === 'debt'
-              ? month
-                ? 'өгөөгүй'
-                : 'өртэй'
-              : state === 'paid'
-                ? 'төлсөн'
-                : 'илүү төлсөн'
-          }`}
-        {search && ` · «${search}» хайлт`}
-      </p>
+        <FilterField label="Төлөв">
+          <SegmentedNav
+            items={[
+              { key: 'all', label: 'Бүгд', href: hrefWith({ state: '' }), active: state === 'all' },
+              {
+                key: 'debt',
+                label: month ? 'Өгөөгүй' : 'Өртэй',
+                href: hrefWith({ state: 'debt' }),
+                active: state === 'debt',
+              },
+              {
+                key: 'paid',
+                label: 'Төлсөн',
+                href: hrefWith({ state: 'paid' }),
+                active: state === 'paid',
+              },
+              // Сарын хэлбэрт илүү төлөлт харагдахгүй: FIFO-д нэг сарын
+              // үлдэгдэл хэзээ ч сөрөг болдоггүй, илүү мөнгө дараагийн
+              // саруудыг хаадаг
+              ...(month
+                ? []
+                : [
+                    {
+                      key: 'over',
+                      label: 'Илүү төлсөн',
+                      href: hrefWith({ state: 'over' }),
+                      active: state === 'over',
+                    },
+                  ]),
+            ]}
+          />
+        </FilterField>
+
+        <FilterField label="Хайх">
+          <SearchBox initial={search} />
+        </FilterField>
+      </FilterPanel>
+
+      <ResultSummary
+        scope={`${month ? formatBillingMonth(month) : 'Бүх сар'} · ${
+          category ? CATEGORY_LABEL[category].toLowerCase() : 'бүх ангилал'
+        }${
+          state === 'all' ? '' : state === 'debt' ? (month ? ' · өгөөгүй' : ' · өртэй') : state === 'paid' ? ' · төлсөн' : ' · илүү төлсөн'
+        }${search ? ` · «${search}»` : ''}`}
+        count={flats.length}
+        unit="айл"
+      >
+        {!month && <WarningChip count={overpaid} label="айл илүү төлсөн" />}
+      </ResultSummary>
 
       <FlatBalanceList flats={flats} category={category} />
     </div>

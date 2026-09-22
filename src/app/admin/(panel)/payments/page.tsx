@@ -1,4 +1,11 @@
 import { formatBillingMonth, formatMnt } from '@/lib/format';
+import { ExcelExportButton } from '@/components/admin/filters/ExcelExportButton';
+import { FilterField, FilterPanel } from '@/components/admin/filters/FilterPanel';
+import { MonthStepper } from '@/components/admin/filters/MonthStepper';
+import { ResultSummary } from '@/components/admin/filters/ResultSummary';
+import { SearchBox } from '@/components/admin/filters/SearchBox';
+import { SegmentedNav } from '@/components/admin/filters/SegmentedNav';
+import { WarningChip } from '@/components/admin/filters/WarningChip';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { fetchAllRows } from '@/lib/supabase/fetch-all';
 import { CATEGORIES, CATEGORY_LABEL, type BillCategory } from '@/lib/types';
@@ -118,6 +125,36 @@ export default async function AdminPaymentsPage({
   const total = rows.reduce((s, r) => s + r.amount, 0);
   const allocated = rows.reduce((s, r) => s + r.allocations.reduce((x, a) => x + a.amount, 0), 0);
 
+  /** Шүүлт солиход бусад параметрийг хэвээр авч явах URL */
+  const hrefWith = (patch: Record<string, string>) => {
+    const next = new URLSearchParams({
+      ...(month ? { month } : {}),
+      ...(category ? { category } : {}),
+      ...(status ? { status } : {}),
+      ...(search ? { q: search } : {}),
+    });
+    for (const [key, value] of Object.entries(patch)) {
+      if (value) next.set(key, value);
+      else next.delete(key);
+    }
+    return `/admin/payments?${next}`;
+  };
+
+  // Хуваарилагдаагүй / дутуу хуваарилсан гүйлгээ — эдгээр мөнгө айлын
+  // үлдэгдэлд ТУСААГҮЙ байна, тиймээс админ гараар шийдэх ёстой
+  const unmatched = rows.filter((r) => r.status === 'UNMATCHED').length;
+  const partial = rows.filter((r) => r.status === 'PARTIAL').length;
+
+  const exportHeaders = ['Огноо', 'Дүн', 'Гүйлгээний утга', 'Оногдсон тоот', 'Данс', 'Төлөв'];
+  const exportRows: (string | number | null)[][] = rows.map((r) => [
+    r.txn_date,
+    r.amount,
+    r.description,
+    r.allocations.map((a) => a.flat).join(', ') || '—',
+    CATEGORY_LABEL[r.source_category] ?? r.source_category,
+    r.status,
+  ]);
+
   return (
     <div>
       <h1 className="mb-1 text-2xl font-bold tracking-tight text-slate-900">
@@ -144,82 +181,78 @@ export default async function AdminPaymentsPage({
         </div>
       </div>
 
-      <form className="mb-4 flex flex-wrap items-end gap-3">
-        <div>
-          <label htmlFor="f-cat" className="mb-1 block text-xs font-medium text-slate-500">
-            Данс
-          </label>
-          <select
-            id="f-cat"
-            name="category"
-            defaultValue={category ?? ''}
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900"
-          >
-            <option value="">Бүгд</option>
-            {CATEGORIES.map((c) => (
-              <option key={c.key} value={c.key}>
-                {c.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label htmlFor="f-month" className="mb-1 block text-xs font-medium text-slate-500">
-            Сар
-          </label>
-          <select
-            id="f-month"
-            name="month"
-            defaultValue={month}
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900"
-          >
-            <option value="">Бүх хугацаа</option>
-            {months.map((m) => (
-              <option key={m} value={m}>
-                {formatBillingMonth(m)}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label htmlFor="f-st" className="mb-1 block text-xs font-medium text-slate-500">
-            Төлөв
-          </label>
-          <select
-            id="f-st"
-            name="status"
-            defaultValue={status ?? ''}
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900"
-          >
-            <option value="">Бүгд</option>
-            <option value="MATCHED">Хуваарилсан</option>
-            <option value="PARTIAL">Дутуу</option>
-            <option value="UNMATCHED">Хуваарилаагүй</option>
-          </select>
-        </div>
-
-        <div>
-          <label htmlFor="f-q" className="mb-1 block text-xs font-medium text-slate-500">
-            Тоот эсвэл утга
-          </label>
-          <input
-            id="f-q"
-            name="q"
-            defaultValue={search}
-            placeholder="193"
-            className="w-48 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900"
+      {/*
+        Данс, төлөв, сар нь дарахад ШУУД шүүнэ. Хайлт л Enter шаардана.
+      */}
+      <FilterPanel
+        action={
+          <ExcelExportButton
+            filename={`Хуулга ${month ?? 'бүх хугацаа'}`}
+            sheetName="Хуулга"
+            headers={exportHeaders}
+            rows={exportRows}
           />
-        </div>
+        }
+      >
+        <FilterField label="Сар">
+          <MonthStepper months={months} current={month} allowAll allLabel="Бүх хугацаа" />
+        </FilterField>
 
-        <button
-          type="submit"
-          className="rounded-lg bg-slate-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
-        >
-          Шүүх
-        </button>
-      </form>
+        <FilterField label="Данс">
+          <SegmentedNav
+            items={[
+              { key: 'all', label: 'Бүгд', href: hrefWith({ category: '' }), active: !category },
+              ...CATEGORIES.map((c) => ({
+                key: c.key,
+                label: c.label,
+                href: hrefWith({ category: c.key }),
+                active: c.key === category,
+              })),
+            ]}
+          />
+        </FilterField>
+
+        <FilterField label="Төлөв">
+          <SegmentedNav
+            items={[
+              { key: 'all', label: 'Бүгд', href: hrefWith({ status: '' }), active: !status },
+              {
+                key: 'MATCHED',
+                label: 'Хуваарилсан',
+                href: hrefWith({ status: 'MATCHED' }),
+                active: status === 'MATCHED',
+              },
+              {
+                key: 'PARTIAL',
+                label: 'Дутуу',
+                href: hrefWith({ status: 'PARTIAL' }),
+                active: status === 'PARTIAL',
+              },
+              {
+                key: 'UNMATCHED',
+                label: 'Хуваарилаагүй',
+                href: hrefWith({ status: 'UNMATCHED' }),
+                active: status === 'UNMATCHED',
+              },
+            ]}
+          />
+        </FilterField>
+
+        <FilterField label="Хайх">
+          <SearchBox placeholder="Тоот эсвэл гүйлгээний утга" initial={search} />
+        </FilterField>
+      </FilterPanel>
+
+      <ResultSummary
+        scope={`${month ? formatBillingMonth(month) : 'Бүх хугацаа'} · ${
+          category ? CATEGORY_LABEL[category].toLowerCase() : 'бүх данс'
+        }${search ? ` · «${search}»` : ''}`}
+        count={rows.length}
+        unit="гүйлгээ"
+      >
+        <WarningChip count={unmatched} label="гүйлгээ хуваарилаагүй" />
+        <WarningChip count={partial} label="гүйлгээ дутуу хуваарилсан" />
+      </ResultSummary>
 
       {rows.length === 0 ? (
         <div className="rounded-xl border border-dashed border-slate-300 bg-white/60 px-6 py-12 text-center text-sm text-slate-500">
