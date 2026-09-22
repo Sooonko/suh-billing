@@ -1,0 +1,34 @@
+{
+  "name": "soh-billing",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test:match": "tsx src/lib/matching/parse-flat.test.ts",
+    "test:invoices": "tsx src/lib/matching/parse-invoices.test.ts",
+    "test:statement": "tsx src/lib/matching/parse-statement.test.ts",
+    "test:water": "tsx src/lib/billing/water-heat.test.ts",
+    "test:electricity": "tsx src/lib/billing/electricity.test.ts"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.7.0",
+    "@supabase/supabase-js": "^2.58.0",
+    "next": "^15.5.4",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.13",
+    "@types/node": "^24.5.2",
+    "@types/react": "^19.1.13",
+    "@types/react-dom": "^19.1.9",
+    "tailwindcss": "^4.1.13",
+    "tsx": "^4.23.13",
+    "typescript": "^5.9.2"
+  }
+}
