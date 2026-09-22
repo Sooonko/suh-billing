@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { ResidentDashboard } from '@/components/resident/ResidentDashboard';
+import { splitDebtByMonth, type InvoiceLine } from '@/lib/billing/fifo-debt';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type {
   BillCategory,
@@ -88,25 +89,21 @@ export default async function FlatPage({ params }: { params: Promise<{ flat: str
     paidByCategory.set(category, (paidByCategory.get(category) ?? 0) + Number(row.amount));
   }
 
-  const debts: DebtRow[] = [];
-  const invoicesByCategory = new Map<BillCategory, { month: string; billed: number }[]>();
-  for (const row of billed ?? []) {
-    const category = row.category as BillCategory;
-    const list = invoicesByCategory.get(category) ?? [];
-    list.push({ month: row.billing_month as string, billed: Number(row.bill_amount) });
-    invoicesByCategory.set(category, list);
-  }
+  const invoiceLines: InvoiceLine[] = (billed ?? []).map((row) => ({
+    month: row.billing_month as string,
+    category: row.category as BillCategory,
+    billed: Number(row.bill_amount),
+  }));
 
-  for (const [category, invoices] of invoicesByCategory) {
-    let pool = paidByCategory.get(category) ?? 0;
-    for (const invoice of invoices.sort((a, b) => a.month.localeCompare(b.month))) {
-      const applied = Math.min(pool, invoice.billed);
-      pool -= applied;
-      const remaining = Math.round((invoice.billed - applied) * 100) / 100;
-      if (remaining > 0) debts.push({ month: invoice.month, category, billed: invoice.billed, remaining });
-    }
-  }
-  debts.sort((a, b) => a.month.localeCompare(b.month) || a.category.localeCompare(b.category));
+  // Задаргаа нь бүрэн төлөгдсөн сарыг Ч буцаадаг — өртэйг л харуулна
+  const debts: DebtRow[] = splitDebtByMonth(invoiceLines, paidByCategory)
+    .filter((row) => row.remaining > 0)
+    .map(({ month, category, billed: amount, remaining }) => ({
+      month,
+      category,
+      billed: amount,
+      remaining,
+    }));
 
   const data: ResidentDashboardData = {
     flatNumber: flatRow.flat_number,

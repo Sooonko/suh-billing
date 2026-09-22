@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { fetchAllRows } from '@/lib/supabase/fetch-all';
 import { requireAdmin } from '@/lib/supabase/server';
 
 /**
@@ -23,18 +24,31 @@ export async function POST() {
 
   const db = createAdminClient();
 
-  // Хуваарилагдаагүй үлдэгдэлтэй, тоот нь танигдсан гүйлгээнүүд
-  const { data: pending, error: readError } = await db
-    .from('v_transactions_remaining')
-    .select('id, remaining, parsed_flat_number, source_category')
-    .eq('status', 'UNMATCHED')
-    .not('parsed_flat_number', 'is', null)
-    .limit(2000);
-
-  if (readError) {
-    return NextResponse.json({ error: readError.message }, { status: 500 });
+  // Хуваарилагдаагүй үлдэгдэлтэй, тоот нь танигдсан гүйлгээнүүд.
+  // fetchAllRows — PostgREST 1000 мөр л буцаадаг тул дутуу хуваарилахаас
+  // хамгаална. Энд дутвал айлын үлдэгдэл буруу хэвээр үлдэнэ.
+  let pending: {
+    id: string;
+    remaining: number;
+    parsed_flat_number: number;
+    source_category: string;
+  }[];
+  try {
+    pending = await fetchAllRows((from, to) =>
+      db
+        .from('v_transactions_remaining')
+        .select('id, remaining, parsed_flat_number, source_category')
+        .eq('status', 'UNMATCHED')
+        .not('parsed_flat_number', 'is', null)
+        .range(from, to),
+    );
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Уншихад алдаа гарлаа' },
+      { status: 500 },
+    );
   }
-  if (!pending?.length) {
+  if (!pending.length) {
     return NextResponse.json({ allocated: 0, skipped: 0, totalAmount: 0 });
   }
 

@@ -1,5 +1,6 @@
 import { formatBillingMonth, formatMnt } from '@/lib/format';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { fetchAllRows } from '@/lib/supabase/fetch-all';
 import { CATEGORIES, CATEGORY_LABEL, type BillCategory } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -62,9 +63,12 @@ export default async function AdminPaymentsPage({
     query = query.gte('txn_date', `${month}-01`).lt('txn_date', next);
   }
 
-  const [{ data }, { data: allDates }] = await Promise.all([
+  const [{ data }, allDates] = await Promise.all([
     query,
-    db.from('transactions').select('txn_date').order('txn_date', { ascending: false }).limit(5000),
+    // Сарын сонголт БҮТЭН байх ёстой — дутвал хуучин сар цэснээс алга болно
+    fetchAllRows<{ txn_date: string }>((from, to) =>
+      db.from('transactions').select('txn_date').range(from, to),
+    ),
   ]);
 
   // Гүйлгээ орсон сарууд — шүүлтүүрийн сонголт

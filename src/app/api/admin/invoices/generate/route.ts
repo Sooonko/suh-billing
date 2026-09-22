@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { calculateFixedFee, FixedFeeError } from '@/lib/billing/fixed-fee';
 import type { TariffRow } from '@/lib/billing/water-heat';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { fetchAllRows } from '@/lib/supabase/fetch-all';
 import { requireAdmin } from '@/lib/supabase/server';
 import type { BillCategory } from '@/lib/types';
 
@@ -74,8 +75,11 @@ export async function POST(request: Request) {
     );
   }
 
-  const { data: flats } = await db.from('flats').select('id').eq('is_active', true).limit(2000);
-  if (!flats?.length) {
+  // Бүх идэвхтэй тоот — дутвал зарим айлд СӨХ-ийн нэхэмжлэл үүсэхгүй
+  const flats = await fetchAllRows<{ id: string }>((from, to) =>
+    db.from('flats').select('id').eq('is_active', true).range(from, to),
+  );
+  if (!flats.length) {
     return NextResponse.json({ error: 'Идэвхтэй тоот олдсонгүй' }, { status: 400 });
   }
 

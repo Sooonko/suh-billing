@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { formatMnt } from '@/lib/format';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { fetchAllRows } from '@/lib/supabase/fetch-all';
 import { CATEGORIES, type BillCategory } from '@/lib/types';
 
 /** Админ дата бичих тул кэшлэхгүй — үргэлж шинэ тоо харуулна */
@@ -34,12 +35,23 @@ async function loadStats() {
     return c ?? 0;
   };
 
-  const [flats, unmatched, partial, txns, { data: balances }] = await Promise.all([
+  const [flats, unmatched, partial, txns, balances] = await Promise.all([
     count('flats', (q) => q.eq('is_active', true)),
     count('transactions', (q) => q.eq('status', 'UNMATCHED')),
     count('transactions', (q) => q.eq('status', 'PARTIAL')),
     count('transactions'),
-    db.from('v_flat_balances').select('category, total_billed, total_paid, balance').limit(5000),
+    // PostgREST-ийн 1000 мөрийн хязгаараас хамгаалж хуудаслана
+    fetchAllRows<{
+      category: string;
+      total_billed: number;
+      total_paid: number;
+      balance: number;
+    }>((from, to) =>
+      db
+        .from('v_flat_balances')
+        .select('category, total_billed, total_paid, balance')
+        .range(from, to),
+    ),
   ]);
 
   const empty = (): Omit<CategorySummary, 'category'> => ({
@@ -51,7 +63,7 @@ async function loadStats() {
   });
   const byCategory = new Map<BillCategory, Omit<CategorySummary, 'category'>>();
 
-  for (const row of balances ?? []) {
+  for (const row of balances) {
     const category = row.category as BillCategory;
     const acc = byCategory.get(category) ?? empty();
     const balance = Number(row.balance);
