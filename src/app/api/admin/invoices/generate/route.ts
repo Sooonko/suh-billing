@@ -1,3 +1,4 @@
+import { revalidateTag } from 'next/cache';
 import { NextResponse } from 'next/server';
 import { calculateFixedFee, FixedFeeError } from '@/lib/billing/fixed-fee';
 import type { TariffRow } from '@/lib/billing/water-heat';
@@ -120,6 +121,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: `Үүсгэхэд алдаа: ${error.message}` }, { status: 500 });
   }
 
+  // Шинэ сар шүүлтүүрийн цэсэнд ШУУД гарна — үгүй бол кэш 10 минут хуучрана
+  revalidateTag('invoices');
   return NextResponse.json({
     created: inserted?.length ?? 0,
     replaced: replacing,

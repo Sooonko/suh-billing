@@ -1,3 +1,4 @@
+import { revalidateTag } from 'next/cache';
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { requireAdmin } from '@/lib/supabase/server';
@@ -91,6 +92,8 @@ export async function POST(request: Request) {
     await db.from('flats').update({ entrance }).in('id', flatIds);
   }
 
+  // Шинэ сар шүүлтүүрийн цэсэнд ШУУД гарна — үгүй бол кэш 10 минут хуучрана
+  revalidateTag('invoices');
   return NextResponse.json({
     imported: data?.length ?? 0,
     replaced: result.valid.filter((r) => r.isReplacing).length,

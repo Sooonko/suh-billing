@@ -1,7 +1,9 @@
+import { unstable_cache } from 'next/cache';
 import Link from 'next/link';
 import { InvoiceImport } from '@/components/admin/InvoiceImport';
 import { SohGenerator } from '@/components/admin/SohGenerator';
 import { InvoiceList, type InvoiceRow } from '@/components/admin/InvoiceList';
+import { AddInvoice } from '@/components/admin/AddInvoice';
 import { ExcelExportButton } from '@/components/admin/filters/ExcelExportButton';
 import { FilterField, FilterPanel } from '@/components/admin/filters/FilterPanel';
 import { MonthStepper } from '@/components/admin/filters/MonthStepper';
@@ -16,6 +18,42 @@ import { CATEGORIES, CATEGORY_LABEL, type BillCategory } from '@/lib/types';
 export const dynamic = 'force-dynamic';
 
 const CATEGORY_KEYS = CATEGORIES.map((c) => c.key);
+const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/**
+ * Бүртгэгдсэн сарууд — шүүлтүүрийн сонголт.
+ *
+ * ЯАГААД КЭШЛЭВ: Supabase сервер хол байгаа тул хүсэлт бүр ~1–2 секунд
+ * авдаг. Сарын жагсаалт нь ЗӨВХӨН импорт хийхэд өөрчлөгддөг атлаа хуудас
+ * ачаалах бүрт дахин татагдаж, сар солих хугацааг хоёр дахин уртасгаж
+ * байв. Импортын commit дээр `revalidateTag('invoices')` дуудагдана.
+ */
+const loadInvoiceMonths = unstable_cache(
+  async () => {
+    const db = createAdminClient();
+    const { data } = await db
+      .from('invoices')
+      .select('billing_month')
+      .order('billing_month', { ascending: false });
+    return [...new Set((data ?? []).map((r) => r.billing_month as string))];
+  },
+  ['invoice-months'],
+  { tags: ['invoices'], revalidate: 600 },
+);
+
+/** Нэг сар, нэг ангиллын нэхэмжлэл */
+async function fetchInvoices(category: BillCategory, month: string) {
+  const db = createAdminClient();
+  const { data } = await db
+    .from('invoices')
+    .select(
+      'id, category, billing_month, prev_reading, current_reading, hot_prev, hot_current, cold_prev, cold_current, usage_amount, bill_amount, note, flats!inner(flat_number, owner_name)',
+    )
+    .eq('category', category)
+    .eq('billing_month', month)
+    .limit(1000);
+  return data ?? [];
+}
 
 /**
  * Модуль 1 — Нэхэмжлэл.
@@ -35,19 +73,25 @@ export default async function AdminInvoicesPage({
   const params = await searchParams;
   // Таб нь URL-д — шүүлт, хуудас сэргээхэд алдагдахгүй
   const tab = params.tab === 'import' ? 'import' : 'list';
-  const db = createAdminClient();
-
-  // Ямар сарууд бүртгэгдсэн бэ — шүүлтүүрийн сонголт
-  const { data: monthRows } = await db
-    .from('invoices')
-    .select('billing_month')
-    .order('billing_month', { ascending: false });
-  const months = [...new Set((monthRows ?? []).map((r) => r.billing_month as string))];
 
   const category = (
     CATEGORY_KEYS.includes(params.category as BillCategory) ? params.category : 'WATER_HEAT'
   ) as BillCategory;
-  const month = params.month && months.includes(params.month) ? params.month : (months[0] ?? '');
+
+  /**
+   * Сарын жагсаалт КЭШЭЭС ирнэ — сүлжээний хүсэлт болохгүй.
+   *
+   * ЯАГААД ЗЭРЭГЦҮҮЛЭЭГҮЙ ВЭ: хоёр хүсэлтийг `Promise.all`-оор зэрэг
+   * явуулж туршсан боловч УДААШРАВ — хоёр дахь хүсэлт шинэ TLS холболт
+   * нээдэг тул дулаацсан холболтоор дараалуулснаас хожимддог.
+   * Хэмжилт (4 удаа, медиан): дараалсан 1.05с · зэрэгцээ 1.54с ·
+   * кэштэй 0.77с. Тиймээс жинхэнэ хожил нь кэш, зэрэгцүүлэлт биш.
+   */
+  const months = await loadInvoiceMonths();
+  const asked = params.month && MONTH_RE.test(params.month) ? params.month : null;
+  const month = asked && months.includes(asked) ? asked : (months[0] ?? '');
+  const rawRows = month ? await fetchInvoices(category, month) : [];
+
   const search = params.q?.trim() ?? '';
   /**
    * Анхааруулах чипээр шүүх.
@@ -60,21 +104,10 @@ export default async function AdminInvoicesPage({
    */
   const flag = params.flag === 'nogrowth' || params.flag === 'missing' ? params.flag : null;
 
-  let invoices: InvoiceRow[] = [];
-  if (month) {
-    const { data } = await db
-      .from('invoices')
-      .select(
-        'id, category, billing_month, prev_reading, current_reading, hot_prev, hot_current, cold_prev, cold_current, usage_amount, bill_amount, note, flats!inner(flat_number, owner_name)',
-      )
-      .eq('category', category)
-      .eq('billing_month', month)
-      .limit(1000);
-    // Эрэмбийг ЭНД хийнэ: PostgREST-ийн .order(referencedTable) нь холбоос
-    // дотоод мөрийг эрэмбэлдэг, эцэг мөрийг биш. Тоот нь холбоос дотор тул
-    // JS талдаа эрэмбэлэх нь эргэлзээгүй зөв.
-
-    invoices = (data ?? []).map((row) => {
+  // Эрэмбийг ЭНД хийнэ: PostgREST-ийн .order(referencedTable) нь холбоос
+  // дотоод мөрийг эрэмбэлдэг, эцэг мөрийг биш. Тоот нь холбоос дотор тул
+  // JS талдаа эрэмбэлэх нь эргэлзээгүй зөв.
+  let invoices: InvoiceRow[] = rawRows.map((row) => {
       // PostgREST-ийн холбоос нэг объект болж ирнэ (!inner тул массив биш)
       const flat = row.flats as unknown as { flat_number: number; owner_name: string | null };
       return {
@@ -94,18 +127,17 @@ export default async function AdminInvoicesPage({
         bill_amount: Number(row.bill_amount),
         note: row.note as string | null,
       };
-    });
+  });
 
-    invoices.sort((a, b) => a.flat_number - b.flat_number);
+  invoices.sort((a, b) => a.flat_number - b.flat_number);
 
-    if (search) {
-      const needle = search.toLowerCase();
-      invoices = invoices.filter(
-        (i) =>
-          String(i.flat_number).includes(needle) ||
-          (i.owner_name ?? '').toLowerCase().includes(needle),
-      );
-    }
+  if (search) {
+    const needle = search.toLowerCase();
+    invoices = invoices.filter(
+      (i) =>
+        String(i.flat_number).includes(needle) ||
+        (i.owner_name ?? '').toLowerCase().includes(needle),
+    );
   }
 
   /**
@@ -251,6 +283,11 @@ export default async function AdminInvoicesPage({
               <SearchBox initial={search} />
             </FilterField>
           </FilterPanel>
+
+          {/* Маягт нээгдэхэд бүтэн өргөн авах ёстой тул картын ДОТОР биш, доор */}
+          <div className="mb-4 flex justify-end">
+            <AddInvoice category={category} month={month} />
+          </div>
 
           <ResultSummary
             scope={`${formatBillingMonth(month)}-ын ${CATEGORY_LABEL[category].toLowerCase()}${
