@@ -41,11 +41,16 @@ export interface ParsedElectricityRow {
   flatNumber: number;
   prev: number;
   current: number;
+  /**
+   * Админ ЗӨВШӨӨРСӨН тул оруулсан эмзэг мөр — нэхэмжлэлийн `note` болно.
+   */
+  forcedNote?: string;
 }
 
 export interface ParseElectricityResult {
   rows: ParsedElectricityRow[];
-  skipped: { rowIndex: number; raw: string; reason: string }[];
+  /** `canInclude` — админ зөвшөөрч болох эмзэг мөр (заалт дутуу) */
+  skipped: { rowIndex: number; raw: string; reason: string; canInclude?: boolean }[];
   columns: ElectricityColumns;
 }
 
@@ -57,9 +62,15 @@ function reading(row: RawRow, column: string | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * @param forceRows Админ «оруул» гэж зөвшөөрсөн мөрийн дугаарууд. Заалт
+ *                  дутуу байсан ч зарцуулалтыг 0 гэж үзэж оруулна.
+ *                  Шийдвэрийг СИСТЕМ биш, ХҮН гаргана.
+ */
 export function parseElectricityInvoices(
   rows: RawRow[],
   resolve: FlatResolver,
+  forceRows?: ReadonlySet<number>,
 ): ParseElectricityResult {
   const headers = rows.length ? Object.keys(rows[0]) : [];
   const columns = detectElectricityColumns(headers);
@@ -89,7 +100,19 @@ export function parseElectricityInvoices(
         parsed.push({ rowIndex, flatNumber, prev: 0, current: 0 });
         continue;
       }
-      skipped.push({ rowIndex, raw, reason: 'ЭНЭ САРЫН заалт бөглөгдөөгүй' });
+      const reason = 'ЭНЭ САРЫН заалт бөглөгдөөгүй';
+      if (!forceRows?.has(rowIndex)) {
+        skipped.push({ rowIndex, raw, reason, canInclude: true });
+        continue;
+      }
+      // Админ зөвшөөрсөн: өмнөх заалтыг давтаж зарцуулалтыг 0 болгоно
+      parsed.push({
+        rowIndex,
+        flatNumber,
+        prev,
+        current: prev,
+        forcedNote: `${reason} — админ зөвшөөрч, зарцуулалтыг 0 гэж үзсэн`,
+      });
       continue;
     }
 

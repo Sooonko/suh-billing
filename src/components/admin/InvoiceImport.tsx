@@ -64,7 +64,7 @@ interface Preview {
     totalAmount: number;
   };
   rows: PreviewRow[];
-  skipped: { sheet: string; rowIndex: number; raw: string; reason: string }[];
+  skipped: { sheet: string; rowIndex: number; raw: string; reason: string; canInclude?: boolean }[];
   unknownFlats: { sheet: string; rowIndex: number; flatNumber: number }[];
 }
 
@@ -95,10 +95,25 @@ export function InvoiceImport() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<'read' | 'preview' | 'commit' | null>(null);
 
+  /**
+   * Заалт дутуу тул алгасагдсан мөрүүд.
+   *
+   * ЯАГААД ТУСДАА ХАДГАЛНА: админ мөрийг зөвшөөрөнгүүт тэр мөр дараагийн
+   * харалтад `skipped`-ээс алга болж `valid` руу шилжинэ. Зөвхөн сүүлийн
+   * хариунаас зурвал чагт нь өөрөө алга болж, буцаах боломжгүй болно.
+   */
+  const [forceable, setForceable] = useState<Preview['skipped']>([]);
+  /** Админ «оруул» гэж зөвшөөрсөн мөрүүд — «<таб>::<мөр>» */
+  const [includeRows, setIncludeRows] = useState<string[]>([]);
+
   function reset() {
     setPreview(null);
     setResult(null);
     setError(null);
+    // Өөр файл/сар/ангилал руу шилжихэд өмнөх шийдвэр дагаж очиж
+    // БОЛОХГҮЙ — мөрийн дугаар огт өөр мөрийг заана
+    setForceable([]);
+    setIncludeRows([]);
   }
 
   async function handleFile(event: React.ChangeEvent<HTMLInputElement>) {
@@ -121,7 +136,7 @@ export function InvoiceImport() {
     }
   }
 
-  async function send(step: 'preview' | 'commit') {
+  async function send(step: 'preview' | 'commit', rows = includeRows) {
     if (!sheets) return;
     setBusy(step);
     setError(null);
@@ -129,7 +144,7 @@ export function InvoiceImport() {
     const response = await fetch(`/api/admin/invoices/${step}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ category, billingMonth, sheets }),
+      body: JSON.stringify({ category, billingMonth, sheets, includeRows: rows }),
     });
     const data = await response.json();
     setBusy(null);
@@ -139,7 +154,18 @@ export function InvoiceImport() {
       return;
     }
 
-    if (step === 'preview') setPreview(data as Preview);
+    if (step === 'preview') {
+      const next = data as Preview;
+      setPreview(next);
+      // Шинээр гарч ирсэн эмзэг мөрүүдийг жагсаалтад НЭМНЭ, хасахгүй
+      setForceable((current) => {
+        const seen = new Set(current.map((r) => `${r.sheet}::${r.rowIndex}`));
+        const added = next.skipped.filter(
+          (r) => r.canInclude && !seen.has(`${r.sheet}::${r.rowIndex}`),
+        );
+        return added.length ? [...current, ...added] : current;
+      });
+    }
     else {
       setResult(data as CommitResult);
       setPreview(null);
@@ -374,17 +400,74 @@ export function InvoiceImport() {
             </div>
           )}
 
-          {preview.skipped.length > 0 && (
+          {/*
+            ЗААЛТ ДУТУУ МӨРҮҮД — шийдвэрийг систем биш, АДМИН гаргана.
+
+            Өмнө нь эдгээрийг чимээгүй алгасдаг байсан тул нэг айл бүтэн
+            сараар нэхэмжлэлгүй үлдэж байсан (8 сарын 109 тоот). Одоо
+            жагсаагаад харуулж, чагтлавал зарцуулалтыг 0 гэж үзэн оруулна.
+          */}
+          {forceable.length > 0 && (
+            <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <p className="text-sm font-semibold text-amber-900">
+                Заалт дутуу {forceable.length} мөр — оруулах эсэхийг та шийднэ
+              </p>
+              <p className="mt-0.5 text-xs text-amber-800">
+                Чагтлаагүй мөр нэхэмжлэгдэхгүй, тэр айл энэ сард төлбөргүй
+                үлдэнэ. Чагтлавал дутуу тоолуурын зарцуулалтыг 0 гэж үзээд
+                нөгөөг нь бүрэн нэхэмжилнэ.
+              </p>
+
+              <ul className="mt-2 space-y-1">
+                {forceable.map((s) => {
+                  const key = `${s.sheet}::${s.rowIndex}`;
+                  const checked = includeRows.includes(key);
+                  return (
+                    <li key={key}>
+                      <label className="flex cursor-pointer items-start gap-2 text-xs text-amber-900">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={busy !== null}
+                          onChange={(e) => {
+                            const next = e.target.checked
+                              ? [...includeRows, key]
+                              : includeRows.filter((k) => k !== key);
+                            setIncludeRows(next);
+                            // Дүнг ШУУД дахин бодно — админ үр дүнг нь хараад
+                            // шийднэ, таамаглахгүй
+                            void send('preview', next);
+                          }}
+                          className="mt-0.5 h-3.5 w-3.5 rounded border-amber-400"
+                        />
+                        <span>
+                          <span className="font-semibold">{s.raw || '(тоотгүй)'}</span> — «{s.sheet}»
+                          мөр {s.rowIndex}: {s.reason}
+                        </span>
+                      </label>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+
+          {preview.skipped.filter((s) => !s.canInclude).length > 0 && (
             <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
               <p className="font-semibold">Алгасагдсан мөр:</p>
               <ul className="mt-1 space-y-0.5 text-xs">
-                {preview.skipped.slice(0, 10).map((s) => (
-                  <li key={`${s.sheet}-${s.rowIndex}`}>
-                    «{s.sheet}» мөр {s.rowIndex}: {s.reason}
-                    {s.raw && ` — «${s.raw}»`}
-                  </li>
-                ))}
-                {preview.skipped.length > 10 && <li>… бас {preview.skipped.length - 10} мөр</li>}
+                {preview.skipped
+                  .filter((s) => !s.canInclude)
+                  .slice(0, 10)
+                  .map((s) => (
+                    <li key={`${s.sheet}-${s.rowIndex}`}>
+                      «{s.sheet}» мөр {s.rowIndex}: {s.reason}
+                      {s.raw && ` — «${s.raw}»`}
+                    </li>
+                  ))}
+                {preview.skipped.filter((s) => !s.canInclude).length > 10 && (
+                  <li>… бас {preview.skipped.filter((s) => !s.canInclude).length - 10} мөр</li>
+                )}
               </ul>
             </div>
           )}

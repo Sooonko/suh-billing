@@ -39,6 +39,17 @@ export interface InvoiceImportInput {
    * тулгалтад хамаагүй.
    */
   sheets?: SheetInput[];
+  /**
+   * Админ «оруул» гэж ЗӨВШӨӨРСӨН эмзэг мөрүүд, «<таб>::<мөр>» хэлбэрээр.
+   *
+   * Заалт дутуу мөрийг систем анхныхаа байдлаар алгасдаг. Гэхдээ заримдаа
+   * тэр айлыг огт нэхэмжлэхгүй орхих нь илүү хортой (8 сарын 109 тоот
+   * ингэж бүтэн сар нэхэмжлэлгүй үлдсэн). Шийдвэрийг СИСТЕМ биш, ХҮН
+   * гаргана: харалт дээр жагсаагаад админ мөр бүрийг чагтална.
+   *
+   * Мөрийн дугаар нь АДМИНД ХАРАГДАХ дугаар (толгойн шилжилт нэмэгдсэн).
+   */
+  includeRows?: string[];
 }
 
 export type InvoiceImportError = { error: string; status: number };
@@ -75,7 +86,7 @@ export interface InvoiceImportAnalysis {
   valid: ImportRow[];
   /** flats хүснэгтэд байхгүй тоот — бүртгэхгүй */
   unknownFlats: { sheet: string; rowIndex: number; flatNumber: number }[];
-  skipped: { sheet: string; rowIndex: number; raw: string; reason: string }[];
+  skipped: { sheet: string; rowIndex: number; raw: string; reason: string; canInclude?: boolean }[];
   /** Хоёр табад ижил тоот — аль нь зөв бэ гэдгийг систем шийдэхгүй */
   duplicateFlats: { flatNumber: number; sheets: string[] }[];
   /** Таб тус бүрийн тоо — админ бүх орц орсон эсэхийг хардаг */
@@ -197,17 +208,38 @@ export async function analyzeInvoiceImport(
     }
   }
 
+  /**
+   * Админы зөвшөөрсөн мөрүүдийг таб тус бүрээр бүлэглэнэ.
+   * Түлхүүр нь «<таб>::<админд харагдах мөр>» тул задлагч руу өгөхдөө
+   * толгойн шилжилтийг ХАСНА.
+   */
+  const forcedBySheet = new Map<string, Set<number>>();
+  for (const key of input.includeRows ?? []) {
+    const at = key.lastIndexOf('::');
+    if (at < 0) continue;
+    const sheetName = key.slice(0, at);
+    const displayed = Number(key.slice(at + 2));
+    if (!Number.isInteger(displayed)) continue;
+    const set = forcedBySheet.get(sheetName) ?? new Set<number>();
+    set.add(displayed);
+    forcedBySheet.set(sheetName, set);
+  }
+
   // ── Таб тус бүрийг боловсруулаад нэгтгэнэ ─────────────────────────────────
   for (const sheet of sheets) {
     // Excel дээрх жинхэнэ мөрийн дугаар = толгойн мөрөөс хойш
     const offset = (sheet.headerRow ?? 1) - 1;
+    // Задлагч нь шилжилтгүй дугаараар ажилладаг
+    const forced = new Set(
+      [...(forcedBySheet.get(sheet.name) ?? [])].map((displayed) => displayed - offset),
+    );
     const before = valid.length;
     // «9 сар 1 орц» → 1. Тариф орцоор ялгаатай байж болно.
     const sheetEntrance = parseEntrance(sheet.name);
 
     if (cat === 'WATER_HEAT') {
       // ── Ус дулаан: заалт уншаад СИСТЕМ бодно ─────────────────────────────
-      const parsed = parseWaterInvoices(sheet.rows, resolveFlat);
+      const parsed = parseWaterInvoices(sheet.rows, resolveFlat, forced);
       // Багануудыг эхний ТАНИГДСАН табаас авч харуулна
       if (!columns.flat) columns = parsed.columns as Record<string, string | undefined>;
 
@@ -254,7 +286,8 @@ export async function analyzeInvoiceImport(
             currentReading: null,
             usageAmount: bill.totalUsage,
             billAmount: bill.total,
-            note: null,
+            // Админ зөвшөөрсөн эмзэг мөр бол ШАЛТГААНЫГ үлдээнэ
+            note: row.forcedNote ?? null,
             isReplacing: existingFlatIds.has(flatId),
             hotPrev: row.hotPrev,
             hotCurrent: row.hotCurrent,
@@ -274,7 +307,7 @@ export async function analyzeInvoiceImport(
       }
     } else if (cat === 'ELECTRICITY') {
       // ── Цахилгаан: нэг тоолуурын 2 заалт уншаад СИСТЕМ бодно ────────────
-      const parsed = parseElectricityInvoices(sheet.rows, resolveFlat);
+      const parsed = parseElectricityInvoices(sheet.rows, resolveFlat, forced);
       if (!columns.flat) columns = parsed.columns as Record<string, string | undefined>;
 
       if (!parsed.columns.flat) {
@@ -318,7 +351,8 @@ export async function analyzeInvoiceImport(
             // Тооцоонд орсон кВт·ц (алдагдлын коэфф хэрэглэсний дараах)
             usageAmount: bill.billedKwh,
             billAmount: bill.total,
-            note: null,
+            // Админ зөвшөөрсөн эмзэг мөр бол ШАЛТГААНЫГ үлдээнэ
+            note: row.forcedNote ?? null,
             isReplacing: existingFlatIds.has(flatId),
             breakdown: bill.lines,
           });

@@ -62,12 +62,26 @@ export interface ParsedWaterRow {
   hotCurrent: number;
   coldPrev: number;
   coldCurrent: number;
+  /**
+   * Админ ЗӨВШӨӨРСӨН тул оруулсан эмзэг мөр. Тайлбар нь нэхэмжлэлийн
+   * `note` болж хадгалагдана — хожим «яагаад ингэж бодогдсон бэ» гэж
+   * асуухад хариулт үлдэнэ.
+   */
+  forcedNote?: string;
 }
 
 export interface SkippedWaterRow {
   rowIndex: number;
   raw: string;
   reason: string;
+  /**
+   * Админ «оруул» гэж зөвшөөрч БОЛОХ уу.
+   *
+   * Заалт дутуу бол болно — зарцуулалтыг 0 гэж үзээд нэхэмжилнэ.
+   * Тоот танигдаагүй бол БОЛОХГҮЙ — хэний төлбөр болох нь тодорхойгүй
+   * тул чагтлах юм алга.
+   */
+  canInclude?: boolean;
 }
 
 export interface ParseWaterResult {
@@ -89,6 +103,9 @@ export interface ParseWaterResult {
  *                        гэж үздэг). Өмнөхийг 0 гэж авна.
  *  4. ОДООГИЙН хоосон  → дата ОРУУЛААГҮЙ. Хүлээж авахгүй — эс бөгөөс
  *                        сөрөг зарцуулалт, сөрөг төлбөр гарна.
+ *                        ГЭХДЭЭ админ тухайн мөрийг зөвшөөрвөл (`forceRows`)
+ *                        зарцуулалтыг 0 гэж үзээд оруулна. Шийдвэрийг
+ *                        СИСТЕМ биш, ХҮН гаргана.
  */
 function meterPair(
   row: RawRow,
@@ -123,7 +140,16 @@ function reading(row: RawRow, column: string | undefined): number | null {
  */
 export type FlatResolver = (raw: string) => number | null;
 
-export function parseWaterInvoices(rows: RawRow[], resolve: FlatResolver): ParseWaterResult {
+/**
+ * @param forceRows Админ «оруул» гэж зөвшөөрсөн мөрийн дугаарууд
+ *                  (`rowIndex`, өөрөөр хэлбэл толгойн дараа 2-оос эхэлнэ).
+ *                  Заалт дутуу байсан ч зарцуулалтыг 0 гэж үзэж оруулна.
+ */
+export function parseWaterInvoices(
+  rows: RawRow[],
+  resolve: FlatResolver,
+  forceRows?: ReadonlySet<number>,
+): ParseWaterResult {
   const headers = rows.length ? Object.keys(rows[0]) : [];
   const columns = detectWaterColumns(headers);
 
@@ -151,7 +177,32 @@ export function parseWaterInvoices(rows: RawRow[], resolve: FlatResolver): Parse
       const which = [hot === 'MISSING' && 'халуун', cold === 'MISSING' && 'хүйтэн']
         .filter(Boolean)
         .join(', ');
-      skipped.push({ rowIndex, raw, reason: `${which} усны ЭНЭ САРЫН заалт бөглөгдөөгүй` });
+      const reason = `${which} усны ЭНЭ САРЫН заалт бөглөгдөөгүй`;
+
+      if (!forceRows?.has(rowIndex)) {
+        skipped.push({ rowIndex, raw, reason, canInclude: true });
+        continue;
+      }
+
+      // Админ зөвшөөрсөн: дутуу тоолуурыг «зарцуулалт 0» гэж үзнэ. Нөгөө
+      // тоолуур нь хэвийн уншигдсан бол түүнийг нь бүрэн нэхэмжилнэ.
+      const zeroUse = (m: typeof hot, prevColumn: string | undefined) => {
+        if (m !== 'MISSING') return m;
+        const prev = reading(row, prevColumn) ?? 0;
+        return { prev, current: prev };
+      };
+      const hotFixed = zeroUse(hot, columns.hotPrev);
+      const coldFixed = zeroUse(cold, columns.coldPrev);
+
+      parsed.push({
+        rowIndex,
+        flatNumber,
+        hotPrev: hotFixed.prev,
+        hotCurrent: hotFixed.current,
+        coldPrev: coldFixed.prev,
+        coldCurrent: coldFixed.current,
+        forcedNote: `${reason} — админ зөвшөөрч, зарцуулалтыг 0 гэж үзсэн`,
+      });
       continue;
     }
 
