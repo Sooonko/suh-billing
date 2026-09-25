@@ -30,7 +30,7 @@ const CATEGORY_KEYS = CATEGORIES.map((c) => c.key);
 export default async function AdminInvoicesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ category?: string; month?: string; q?: string; tab?: string }>;
+  searchParams: Promise<{ category?: string; month?: string; q?: string; tab?: string; flag?: string }>;
 }) {
   const params = await searchParams;
   // Таб нь URL-д — шүүлт, хуудас сэргээхэд алдагдахгүй
@@ -49,6 +49,16 @@ export default async function AdminInvoicesPage({
   ) as BillCategory;
   const month = params.month && months.includes(params.month) ? params.month : (months[0] ?? '');
   const search = params.q?.trim() ?? '';
+  /**
+   * Анхааруулах чипээр шүүх.
+   *
+   *  · `nogrowth` — аль нэг тоолуурын заалт өсөөгүй (зөрүү 0)
+   *  · `missing`  — аль нэг заалт огт ороогүй
+   *
+   * Чип нь тоог хэлээд зогсохгүй тэр мөрүүд рүү АВААЧИХ ёстой. Үгүй бол
+   * админ 209 мөрийг нүдээрээ гүйлгэж хайна.
+   */
+  const flag = params.flag === 'nogrowth' || params.flag === 'missing' ? params.flag : null;
 
   let invoices: InvoiceRow[] = [];
   if (month) {
@@ -123,6 +133,28 @@ export default async function AdminInvoicesPage({
     meterPairs(i).some(([prev, cur]) => prev === null || cur === null),
   ).length;
 
+  // Чипийн шүүлт нь ТООГ бодсоны ДАРАА хэрэглэгдэнэ — эс бөгөөс шүүсний
+  // дараа чип өөрийгөө «1 мөр» гэж харуулж, буцах гарц алга болно
+  const visible = !flag
+    ? invoices
+    : flag === 'nogrowth'
+      ? invoices.filter((i) =>
+          meterPairs(i).some(([prev, cur]) => prev !== null && cur !== null && cur - prev === 0),
+        )
+      : invoices.filter((i) => meterPairs(i).some(([prev, cur]) => prev === null || cur === null));
+
+  /** Чип дарахад шүүлт асна/унтарна — бусад параметр хэвээр */
+  const flagHref = (next: 'nogrowth' | 'missing') => {
+    const params = new URLSearchParams({
+      tab: 'list',
+      category,
+      ...(month ? { month } : {}),
+      ...(search ? { q: search } : {}),
+    });
+    if (flag !== next) params.set('flag', next);
+    return `/admin/invoices?${params}`;
+  };
+
   // Excel матриц — Client Component-д функц дамжуулж болохгүй тул
   // толгой ба мөрүүдийг ЭНГИЙН массив болгож бэлдэнэ
   const exportHeaders =
@@ -135,7 +167,7 @@ export default async function AdminInvoicesPage({
   const gap = (prev: number | null, cur: number | null) =>
     prev === null || cur === null ? null : Math.round((cur - prev) * 100) / 100;
 
-  const exportRows: (string | number | null)[][] = invoices.map((i) =>
+  const exportRows: (string | number | null)[][] = visible.map((i) =>
     category === 'WATER_HEAT'
       ? [i.flat_number, i.owner_name, i.hot_prev, i.hot_current, gap(i.hot_prev, i.hot_current), i.cold_prev, i.cold_current, gap(i.cold_prev, i.cold_current), i.usage_amount, i.bill_amount]
       : category === 'ELECTRICITY'
@@ -221,14 +253,30 @@ export default async function AdminInvoicesPage({
           </FilterPanel>
 
           <ResultSummary
-            scope={`${formatBillingMonth(month)}-ын ${CATEGORY_LABEL[category].toLowerCase()}`}
-            count={invoices.length}
+            scope={`${formatBillingMonth(month)}-ын ${CATEGORY_LABEL[category].toLowerCase()}${
+              flag === 'nogrowth'
+                ? ' · заалт нэмэгдээгүй'
+                : flag === 'missing'
+                  ? ' · заалт ороогүй'
+                  : ''
+            }`}
+            count={visible.length}
           >
-            <WarningChip count={noGrowth} label="мөрд заалт нэмэгдээгүй" />
-            <WarningChip count={missing} label="мөрд заалт ороогүй" />
+            <WarningChip
+              count={noGrowth}
+              label="мөрд заалт нэмэгдээгүй"
+              href={flagHref('nogrowth')}
+              active={flag === 'nogrowth'}
+            />
+            <WarningChip
+              count={missing}
+              label="мөрд заалт ороогүй"
+              href={flagHref('missing')}
+              active={flag === 'missing'}
+            />
           </ResultSummary>
 
-          <InvoiceList invoices={invoices} category={category} month={month} />
+          <InvoiceList invoices={visible} category={category} month={month} />
         </section>
       ))}
 

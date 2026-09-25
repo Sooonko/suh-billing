@@ -56,7 +56,7 @@ const emptyCategories = (): FlatBalance['byCategory'] => ({
 export default async function AdminFlatsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ category?: string; state?: string; q?: string; month?: string }>;
+  searchParams: Promise<{ category?: string; state?: string; q?: string; month?: string; flag?: string }>;
 }) {
   const params = await searchParams;
   const category = CATEGORY_KEYS.includes(params.category as BillCategory)
@@ -68,6 +68,14 @@ export default async function AdminFlatsPage({
     ? (params.state as StateFilter)
     : 'all';
   const search = params.q?.trim() ?? '';
+  /**
+   * Чипээр шүүх — «нэхэмжлэл ороогүй» айлууд.
+   *
+   * Сегмент товч болгоогүй шалтгаан: энэ нь байнгын шүүлт биш, ХОВОР
+   * тохиолдох датаны дутууг шалгах гарц. Товчны эгнээг уртасгах нь
+   * өдөр тутмын ажилд саад болно.
+   */
+  const flag = params.flag === 'noinvoice' ? 'noinvoice' : null;
 
   const db = createAdminClient();
   // fetchAllRows — PostgREST нэг хүсэлтэд 1000 мөр л буцаадаг. Нэхэмжлэл
@@ -233,6 +241,14 @@ export default async function AdminFlatsPage({
   if (state === 'over') flats = flats.filter((f) => balanceOf(f) < 0);
   if (state === 'zero') flats = flats.filter((f) => billedOf(f) === 0);
 
+  if (flag === 'noinvoice') {
+    flats = flats.filter((f) =>
+      category
+        ? !hasInvoice.has(`${f.flatNumber}-${category}`)
+        : CATEGORIES.some((c) => !hasInvoice.has(`${f.flatNumber}-${c.key}`)),
+    );
+  }
+
   if (search) {
     const needle = search.toLowerCase();
     flats = flats.filter(
@@ -253,6 +269,7 @@ export default async function AdminFlatsPage({
       ...(category ? { category } : {}),
       ...(state !== 'all' ? { state } : {}),
       ...(search ? { q: search } : {}),
+      ...(flag ? { flag } : {}),
     });
     for (const [key, value] of Object.entries(patch)) {
       if (value) next.set(key, value);
@@ -431,12 +448,24 @@ export default async function AdminFlatsPage({
                 : state === 'zero'
                   ? ' · нэхэмжлэл 0₮'
                   : ' · илүү төлсөн'
-        }${search ? ` · «${search}»` : ''}`}
+        }${flag === 'noinvoice' ? ' · нэхэмжлэл ороогүй' : ''}${search ? ` · «${search}»` : ''}`}
         count={flats.length}
         unit="айл"
       >
-        <WarningChip count={missingInvoice} label="айлд нэхэмжлэл ороогүй" />
-        {!month && <WarningChip count={overpaid} label="айл илүү төлсөн" />}
+        <WarningChip
+          count={missingInvoice}
+          label="айлд нэхэмжлэл ороогүй"
+          href={hrefWith({ flag: flag === 'noinvoice' ? '' : 'noinvoice' })}
+          active={flag === 'noinvoice'}
+        />
+        {!month && (
+          <WarningChip
+            count={overpaid}
+            label="айл илүү төлсөн"
+            href={hrefWith({ state: state === 'over' ? '' : 'over' })}
+            active={state === 'over'}
+          />
+        )}
       </ResultSummary>
 
       <FlatBalanceList flats={flats} category={category} />

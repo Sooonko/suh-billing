@@ -250,8 +250,19 @@ export default async function AdminPaymentsPage({
         count={rows.length}
         unit="гүйлгээ"
       >
-        <WarningChip count={unmatched} label="гүйлгээ хуваарилаагүй" />
-        <WarningChip count={partial} label="гүйлгээ дутуу хуваарилсан" />
+        {/* Чип нь «Төлөв» шүүлттэй ижил зүйлийг заадаг — дарвал тэр рүү аваачна */}
+        <WarningChip
+          count={unmatched}
+          label="гүйлгээ хуваарилаагүй"
+          href={hrefWith({ status: status === 'UNMATCHED' ? '' : 'UNMATCHED' })}
+          active={status === 'UNMATCHED'}
+        />
+        <WarningChip
+          count={partial}
+          label="гүйлгээ дутуу хуваарилсан"
+          href={hrefWith({ status: status === 'PARTIAL' ? '' : 'PARTIAL' })}
+          active={status === 'PARTIAL'}
+        />
       </ResultSummary>
 
       {rows.length === 0 ? (
