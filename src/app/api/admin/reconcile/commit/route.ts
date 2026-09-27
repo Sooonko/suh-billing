@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { buildNameIndex } from '@/lib/matching/parse-flat';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { requireAdmin } from '@/lib/supabase/server';
 import { parseStatement, type RawRow } from '@/lib/matching/parse-statement';
@@ -38,10 +39,22 @@ export async function POST(request: Request) {
 
   const category = account.category as BillCategory;
 
-  const { data: flats } = await db.from('flats').select('id, flat_number').eq('is_active', true);
+  const { data: flats } = await db
+    .from('flats')
+    .select('id, flat_number, owner_name, excel_label')
+    .eq('is_active', true);
   const flatIdByNumber = new Map<number, string>((flats ?? []).map((f) => [f.flat_number, f.id]));
+  // Харалт ба бичилт ИЖИЛ логикоор танина — эс бөгөөс хараад зөвшөөрсөн
+  // зүйлээс өөр юм бичигдэнэ
+  const nameIndex = buildNameIndex(
+    (flats ?? []).map((f) => ({
+      flatNumber: f.flat_number as number,
+      name: f.owner_name as string | null,
+      excelLabel: f.excel_label as string | null,
+    })),
+  );
 
-  const { transactions } = await parseStatement(rows, new Set(flatIdByNumber.keys()));
+  const { transactions } = await parseStatement(rows, new Set(flatIdByNumber.keys()), nameIndex);
   if (!transactions.length) {
     return NextResponse.json({ error: 'Бүртгэх орлогын гүйлгээ олдсонгүй' }, { status: 400 });
   }

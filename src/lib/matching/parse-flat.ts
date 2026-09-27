@@ -35,6 +35,78 @@ export interface FlatCandidate {
 
 export type Confidence = 'HIGH' | 'MEDIUM' | 'NONE';
 
+/**
+ * Нэрээр таних индекс — арилжааны хэсгүүдэд зориулсан.
+ *
+ * ЯАГААД ХЭРЭГТЭЙ: «Аму спорт лаб», «Дэлгүүр» зэрэг хэсгүүд тоотгүй тул
+ * гүйлгээний утганд нэрээрээ бичигддэг:
+ *   «ARMO SPORT LAB-ЭНХБИЛЭГ ДӨЛБАДРАХ»   «ХҮСЛЭН ДЭЛГҮҮР 95330777»
+ *
+ * Бүтэн нэрээр тулгах нь ажиллахгүй — бичиглэл зөрдөг («ARMO» ≠ «Аму»).
+ * Тиймээс нэр бүрээс ХАМГИЙН ЯЛГАРАХ үгийг авч индекс болгоно: «спорт»,
+ * «дэлгүүр», «соёл». Нэг үг ЗӨВХӨН нэг хэсэгт харьяалагдаж байж индекст
+ * орно — хоёр хэсэгт давхардвал мөнгө буруу оногдох эрсдэлтэй.
+ *
+ * ⚠️ Оршин суугчдын owner_name-ыг бөглөвөл тэдний нэр ч индекст орно.
+ * Гүйлгээг төлсөн хүн эзэн нь биш байж болзошгүй тул нэрээр таьсныг
+ * ХЭЗЭЭ Ч HIGH гэж үзэхгүй — админ хардаг MEDIUM түвшинд үлдээнэ.
+ */
+export type NameIndex = ReadonlyMap<string, number>;
+
+/** Латин бичиглэлийг кирилл рүү — «sport» ↔ «спорт» */
+const LATIN_TO_CYRILLIC: Record<string, string> = {
+  a: 'а', b: 'б', c: 'ц', d: 'д', e: 'е', f: 'ф', g: 'г', h: 'х', i: 'и',
+  j: 'ж', k: 'к', l: 'л', m: 'м', n: 'н', o: 'о', p: 'п', q: 'к', r: 'р',
+  s: 'с', t: 'т', u: 'у', v: 'в', w: 'в', x: 'х', y: 'й', z: 'з',
+};
+
+/** Үг болгон салгаж, кирилл болгож, богино/түгээмэл үгийг хаяна */
+function nameTokens(value: string): string[] {
+  return value
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .map((w) => [...w].map((ch) => LATIN_TO_CYRILLIC[ch] ?? ch).join(''))
+    // 4 үсгээс богино үг хэт түгээмэл («аму», «лаб», «өв») тул алгасна
+    .filter((w) => w.length >= 4);
+}
+
+/**
+ * flats хүснэгтээс нэрийн индекс байгуулна. Мөр бүрт биш, НЭГ УДАА дуудна.
+ */
+export function buildNameIndex(
+  flats: readonly { flatNumber: number; name?: string | null; excelLabel?: string | null }[],
+): NameIndex {
+  // Үг → тэр үгийг агуулсан тоотуудын багц
+  const owners = new Map<string, Set<number>>();
+  for (const flat of flats) {
+    for (const source of [flat.name, flat.excelLabel]) {
+      if (!source) continue;
+      for (const token of nameTokens(source)) {
+        const set = owners.get(token) ?? new Set<number>();
+        set.add(flat.flatNumber);
+        owners.set(token, set);
+      }
+    }
+  }
+
+  // Зөвхөн НЭГ хэсэгт харьяалагдах үгийг үлдээнэ
+  const index = new Map<string, number>();
+  for (const [token, set] of owners) {
+    if (set.size === 1) index.set(token, [...set][0]);
+  }
+  return index;
+}
+
+/** Утгын үгсээс нэрийн индекстэй тохирлыг хайна. Хоёр өөр хэсэг олдвол татгалзана. */
+function matchByName(description: string, index: NameIndex): number | null {
+  const hits = new Set<number>();
+  for (const token of nameTokens(description)) {
+    const flat = index.get(token);
+    if (flat !== undefined) hits.add(flat);
+  }
+  return hits.size === 1 ? [...hits][0] : null;
+}
+
 export interface FlatMatchResult {
   /** Эцсийн шийдвэр. null бол гар шалгалт руу явна. */
   flatNumber: number | null;
@@ -100,12 +172,30 @@ export function collectCandidates(description: string): {
  * @param validFlats   flats хүснэгтээс уншсан бүх тоот. Энэ нь ГОЛ түлхүүр —
  *                     үүнгүйгээр автомат таалт огцом мууддаг.
  */
-export function matchFlat(description: string, validFlats: ReadonlySet<number>): FlatMatchResult {
+export function matchFlat(
+  description: string,
+  validFlats: ReadonlySet<number>,
+  /** Арилжааны хэсгүүдийг нэрээр таних индекс — `buildNameIndex` үүсгэнэ */
+  nameIndex?: NameIndex,
+): FlatMatchResult {
   const { candidates, cleaned } = collectCandidates(description);
   const valid = candidates.filter((c) => validFlats.has(c.flatNumber));
   const found = valid.map((c) => c.flatNumber);
 
   if (valid.length === 0) {
+    // Тоо олдоогүй бол НЭРЭЭР оролдоно — «ARMO SPORT LAB», «ХҮСЛЭН ДЭЛГҮҮР»
+    const byName = nameIndex ? matchByName(description, nameIndex) : null;
+    if (byName !== null && validFlats.has(byName)) {
+      return {
+        flatNumber: byName,
+        // Нэрээр таьсан нь тоогоор таьсанаас сул — админ хараг
+        confidence: 'MEDIUM',
+        candidates: [byName],
+        reason: 'Тоот биш, НЭРЭЭР танигдсан',
+        cleaned,
+      };
+    }
+
     return {
       flatNumber: null,
       confidence: 'NONE',

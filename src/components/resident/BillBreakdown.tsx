@@ -37,7 +37,7 @@ export function BillBreakdown({ lines: allLines }: { lines: BillLineDetail[] }) 
                   ? `${line.rate.toLocaleString('mn-MN')}₮ × ${line.qty} м³`
                   : line.unit === 'PERCENT'
                     ? `${formatMnt(line.qty)}-ийн ${line.rate}%`
-                    : 'сарын тогтмол'}
+                    : ''}
               </span>
             </dt>
             <dd className="shrink-0 text-sm font-semibold tabular-nums text-slate-900">

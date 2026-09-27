@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { buildNameIndex } from '@/lib/matching/parse-flat';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { requireAdmin } from '@/lib/supabase/server';
 import { detectCategoryHint } from '@/lib/matching/detect-category';
@@ -46,12 +47,23 @@ export async function POST(request: Request) {
   const category = account.category as BillCategory;
 
   // 2. Бүх жинхэнэ тоот — тоот таних баталгаажуулалтын түлхүүр
-  const { data: flats } = await db.from('flats').select('id, flat_number').eq('is_active', true);
+  const { data: flats } = await db
+    .from('flats')
+    .select('id, flat_number, owner_name, excel_label')
+    .eq('is_active', true);
   const flatIdByNumber = new Map<number, string>((flats ?? []).map((f) => [f.flat_number, f.id]));
   const validFlats = new Set(flatIdByNumber.keys());
+  // «ARMO SPORT LAB», «ХҮСЛЭН ДЭЛГҮҮР» гэх тоотгүй бичиглэлийг таихад
+  const nameIndex = buildNameIndex(
+    (flats ?? []).map((f) => ({
+      flatNumber: f.flat_number as number,
+      name: f.owner_name as string | null,
+      excelLabel: f.excel_label as string | null,
+    })),
+  );
 
   // 3. Мөр бүрийг задлан шинжилнэ (зарлага автоматаар хасагдана)
-  const { transactions, skipped, columns } = await parseStatement(rows, validFlats);
+  const { transactions, skipped, columns } = await parseStatement(rows, validFlats, nameIndex);
 
   // Орлого нь тусдаа багана, эсвэл нэг "Дүн" багана (сөрөг = зарлага) байж болно
   if ((!columns.credit && !columns.amount) || !columns.description) {

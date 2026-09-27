@@ -1,4 +1,4 @@
-import { matchFlat, type Confidence } from './parse-flat';
+import { matchFlat, type Confidence, type NameIndex } from './parse-flat';
 
 /**
  * Банкны хуулгын мөрүүдийг систем ойлгох хэлбэрт оруулах.
@@ -131,6 +131,8 @@ export interface ParseStatementResult {
 export async function parseStatement(
   rows: RawRow[],
   validFlats: ReadonlySet<number>,
+  /** Арилжааны хэсгүүдийг нэрээр таних индекс (`buildNameIndex`) */
+  nameIndex?: NameIndex,
 ): Promise<ParseStatementResult> {
   const headers = rows.length ? Object.keys(rows[0]) : [];
   const columns = detectColumns(headers);
@@ -175,7 +177,7 @@ export async function parseStatement(
     }
 
     const closingBalance = columns.closing ? parseAmount(row[columns.closing]) || null : null;
-    const match = matchFlat(description, validFlats);
+    const match = matchFlat(description, validFlats, nameIndex);
 
     transactions.push({
       rowIndex,

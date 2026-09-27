@@ -1,5 +1,6 @@
 import { PendingAllocations, type PendingTxn } from '@/components/admin/PendingAllocations';
 import { ReallocateButton } from '@/components/admin/ReallocateButton';
+import { ReparseButton } from '@/components/admin/ReparseButton';
 import { ReconcileImport } from '@/components/admin/ReconcileImport';
 import { StatementTabs, type StatementRow } from '@/components/admin/StatementTabs';
 import { ExcelExportButton } from '@/components/admin/filters/ExcelExportButton';
@@ -179,6 +180,7 @@ export default async function AdminReconcilePage() {
           Гүйлгээний утгаас тоот танигдаагүй эсвэл хэд хэдэн тоот тохирсон. Утгыг уншаад
           өөрөө оноох хэрэгтэй.
         </p>
+        <ReparseButton count={needsDecision.length} />
         <PendingAllocations
           transactions={needsDecision}
           emptyMessage="Шийдвэр хүлээж байгаа гүйлгээ байхгүй"
