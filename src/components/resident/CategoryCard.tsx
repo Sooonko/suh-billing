@@ -119,19 +119,26 @@ export function CategoryCard({ state, hasMeter, label, flatNumber, account }: Pr
               {formatMnt(balance)}
             </span>
           </div>
-        </div>
 
-        {flatNumber !== undefined && (
-          <PayPanel
-            flatNumber={flatNumber}
-            category={state.category}
-            categoryLabel={label ?? CATEGORY_LABEL[state.category]}
-            amount={balance}
-            month={billing_month}
-            accountNumber={account?.number ?? null}
-            accountName={account?.name ?? null}
-          />
-        )}
+          {/*
+            Төлөх товч нь КАРТЫН ДОТОР байх ёстой. Гадна нь тавивал
+            SHELL-ийн `grid-rows-subgrid` + `row-span-2` нь ЗӨВХӨН хоёр
+            мөр эзэлдэг тул гурав дахь хүүхэд веб дээр харагдахгүй болно.
+          */}
+          {flatNumber !== undefined && (
+            <div className="px-4 pb-4">
+              <PayPanel
+                flatNumber={flatNumber}
+                category={state.category}
+                categoryLabel={label ?? CATEGORY_LABEL[state.category]}
+                amount={balance}
+                month={billing_month}
+                accountNumber={account?.number ?? null}
+                accountName={account?.name ?? null}
+              />
+            </div>
+          )}
+        </div>
 
         {/* Задаргаа байхгүй ч 2-р мөрийн БАЙРЫГ эзэлнэ — эс бөгөөс энэ
             багана дангаараа сунаж, доод мөр нь бусдын товчтой нэг шугамд
@@ -248,19 +255,26 @@ export function CategoryCard({ state, hasMeter, label, flatNumber, account }: Pr
             {formatMnt(balance)}
           </span>
         </div>
-      </div>
 
-      {flatNumber !== undefined && (
-        <PayPanel
-          flatNumber={flatNumber}
-          category={state.category}
-          categoryLabel={label ?? CATEGORY_LABEL[state.category]}
-          amount={balance}
-          month={billing_month}
-          accountNumber={account?.number ?? null}
-          accountName={account?.name ?? null}
-        />
-      )}
+          {/*
+          Төлөх товч нь КАРТЫН ДОТОР байх ёстой. Гадна нь тавивал
+          SHELL-ийн `grid-rows-subgrid` + `row-span-2` нь ЗӨВХӨН хоёр
+          мөр эзэлдэг тул гурав дахь хүүхэд веб дээр харагдахгүй болно.
+        */}
+        {flatNumber !== undefined && (
+          <div className="px-4 pb-4">
+            <PayPanel
+              flatNumber={flatNumber}
+              category={state.category}
+              categoryLabel={label ?? CATEGORY_LABEL[state.category]}
+              amount={balance}
+              month={billing_month}
+              accountNumber={account?.number ?? null}
+              accountName={account?.name ?? null}
+            />
+          </div>
+        )}
+      </div>
 
       {breakdown && breakdown.length > 0 ? (
         <BillBreakdown lines={breakdown} />
