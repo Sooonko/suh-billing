@@ -1,6 +1,8 @@
 import { formatBillingMonth, formatMnt, formatReading, previousMonth, shortMonth } from '@/lib/format';
+import { CATEGORY_LABEL } from '@/lib/types';
 import type { FlatCategoryState } from '@/lib/types';
 import { BillBreakdown } from './BillBreakdown';
+import { PayPanel } from './PayPanel';
 import { OverpaymentNote } from './OverpaymentNote';
 import { StatusBadge } from './StatusBadge';
 
@@ -17,6 +19,10 @@ const SHELL =
 
 interface Props {
   state: FlatCategoryState;
+  /** «Төлбөр төлөх» хэсэгт хэрэгтэй — гүйлгээний утганд тоот бичигдэнэ */
+  flatNumber?: number;
+  /** Тухайн ангиллын данс. Байхгүй бол товч гарахгүй. */
+  account?: { number: string; name: string | null };
   /** СӨХ-д тоолуур байхгүй тул заалтын хэсгийг нуухад ашиглана */
   hasMeter: boolean;
   /**
@@ -45,7 +51,7 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
  * "Нийт төлөх дүн" = balance. Энэ нь өмнөх бүх сарын өр + энэ сарын нэхэмжлэл −
  * төлсөн бүх мөнгө. Тиймээс илүү төлөлт аяндаа хасагдсан байдаг.
  */
-export function CategoryCard({ state, hasMeter, label }: Props) {
+export function CategoryCard({ state, hasMeter, label, flatNumber, account }: Props) {
   const {
     balance, bill_amount, billing_month, prev_reading, current_reading, usage_amount, status,
     hot_prev, hot_current, cold_prev, cold_current, breakdown, total_billed, total_paid,
@@ -114,6 +120,18 @@ export function CategoryCard({ state, hasMeter, label }: Props) {
             </span>
           </div>
         </div>
+
+        {flatNumber !== undefined && (
+          <PayPanel
+            flatNumber={flatNumber}
+            category={state.category}
+            categoryLabel={label ?? CATEGORY_LABEL[state.category]}
+            amount={balance}
+            month={billing_month}
+            accountNumber={account?.number ?? null}
+            accountName={account?.name ?? null}
+          />
+        )}
 
         {/* Задаргаа байхгүй ч 2-р мөрийн БАЙРЫГ эзэлнэ — эс бөгөөс энэ
             багана дангаараа сунаж, доод мөр нь бусдын товчтой нэг шугамд
@@ -231,6 +249,18 @@ export function CategoryCard({ state, hasMeter, label }: Props) {
           </span>
         </div>
       </div>
+
+      {flatNumber !== undefined && (
+        <PayPanel
+          flatNumber={flatNumber}
+          category={state.category}
+          categoryLabel={label ?? CATEGORY_LABEL[state.category]}
+          amount={balance}
+          month={billing_month}
+          accountNumber={account?.number ?? null}
+          accountName={account?.name ?? null}
+        />
+      )}
 
       {breakdown && breakdown.length > 0 ? (
         <BillBreakdown lines={breakdown} />

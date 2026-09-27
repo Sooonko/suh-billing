@@ -86,6 +86,11 @@ export interface ResidentDashboardData {
   payments: PaymentEntry[];
   /** Төлөгдөөгүй үлдсэн сарууд, хуучнаас нь эхлэн */
   debts: DebtRow[];
+  /**
+   * Ангилал бүрийн данс — «Төлбөр төлөх» хэсэгт харуулна.
+   * Данс бүртгэгдээгүй бол тэр ангилалд товч гарахгүй.
+   */
+  accounts?: Partial<Record<BillCategory, { number: string; name: string | null }>>;
 }
 
 /**

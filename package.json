@@ -13,7 +13,8 @@
     "test:statement": "tsx src/lib/matching/parse-statement.test.ts",
     "test:water": "tsx src/lib/billing/water-heat.test.ts",
     "test:electricity": "tsx src/lib/billing/electricity.test.ts",
-    "test:fifo": "tsx src/lib/billing/fifo-debt.test.ts"
+    "test:fifo": "tsx src/lib/billing/fifo-debt.test.ts",
+    "test:reference": "tsx src/lib/payment-reference.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.7.0",

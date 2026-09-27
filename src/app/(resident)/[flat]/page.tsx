@@ -105,7 +105,23 @@ export default async function FlatPage({ params }: { params: Promise<{ flat: str
       remaining,
     }));
 
+  /**
+   * Дансны дугаарууд — «Төлбөр төлөх» хэсэгт хэрэгтэй.
+   * Уншигдахгүй бол дэлгэц унахгүй, зүгээр л товч гарахгүй.
+   */
+  const { data: accountRows } = await db
+    .from('bank_accounts')
+    .select('category, account_number, display_name');
+  const accounts: ResidentDashboardData['accounts'] = {};
+  for (const row of accountRows ?? []) {
+    accounts[row.category as BillCategory] = {
+      number: String(row.account_number),
+      name: (row.display_name as string | null)?.trim() || null,
+    };
+  }
+
   const data: ResidentDashboardData = {
+    accounts,
     flatNumber: flatRow.flat_number,
     ownerName: flatRow.owner_name,
     categories: (states ?? []).map((s) => ({
