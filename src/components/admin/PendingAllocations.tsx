@@ -48,6 +48,33 @@ function Row({ txn }: { txn: PendingTxn }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  /**
+   * «Тооцохгүй» болгох — оршин суугчийн төлбөр БИШ орлого.
+   *
+   * СӨХ-ийн данс руу зогсоолын түрээс, дотоод шилжүүлэг гэх мэт өөр
+   * орлого ордог. Гүйлгээг УСТГАХГҮЙ: банкинд мөнгө үнэхээр орсон тул
+   * баримт үлдэх ёстой, зүгээр л ямар ч айлын өрд тооцохгүй.
+   */
+  async function ignore() {
+    if (!confirm(`${formatMnt(txn.amount)} гүйлгээг айлын өрд ТООЦОХГҮЙ болгох уу?\n\n«${txn.description}»\n\nГүйлгээ устахгүй — зүгээр л ямар ч айлд оногдохгүй болно.`)) return;
+    setBusy(true);
+    setError(null);
+
+    const response = await fetch('/api/admin/reconcile/ignore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: txn.id, ignored: true }),
+    });
+    const data = await response.json();
+    setBusy(false);
+
+    if (!response.ok) {
+      setError(data.error ?? 'Алдаа гарлаа');
+      return;
+    }
+    router.refresh();
+  }
+
   async function allocate(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
@@ -168,6 +195,17 @@ function Row({ txn }: { txn: PendingTxn }) {
           className="rounded-lg bg-slate-900 px-5 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
         >
           {busy ? '…' : 'Оноох'}
+        </button>
+
+        {/* Оршин суугчийн төлбөр биш орлогыг эндээс хасна */}
+        <button
+          type="button"
+          onClick={ignore}
+          disabled={busy}
+          title="Айлын өрд тооцохгүй болгоно. Гүйлгээ устахгүй."
+          className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:border-slate-400 hover:bg-slate-50 disabled:opacity-50"
+        >
+          Тооцохгүй
         </button>
       </form>
 
