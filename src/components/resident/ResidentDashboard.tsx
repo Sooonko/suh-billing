@@ -78,9 +78,8 @@ export function ResidentDashboard({ data }: { data: ResidentDashboardData }) {
             {total > 0 ? 'Нийт төлөх дүн' : overpaid > 0 ? 'Нийт илүү төлсөн' : 'Төлбөрийн үлдэгдэл'}
           </p>
           <p
-            className={`mt-1 text-4xl font-bold tabular-nums tracking-tight md:text-5xl ${
-              total > 0 ? 'text-red-700' : overpaid > 0 ? 'text-blue-700' : 'text-emerald-700'
-            }`}
+            className={`mt-1 text-4xl font-bold tabular-nums tracking-tight md:text-5xl ${total > 0 ? 'text-red-700' : overpaid > 0 ? 'text-blue-700' : 'text-emerald-700'
+              }`}
           >
             {formatMnt(total > 0 ? total : overpaid)}
           </p>
@@ -93,8 +92,7 @@ export function ResidentDashboard({ data }: { data: ResidentDashboardData }) {
           */}
           {total > 0 && overpaid > 0 && (
             <p className="mt-1.5 text-sm text-blue-700 md:text-base">
-              Өөр ангилалд {formatMnt(overpaid)} илүү төлсөн байна — дараагийн сард
-              тооцогдоно.
+
             </p>
           )}
         </div>
@@ -146,9 +144,8 @@ export function ResidentDashboard({ data }: { data: ResidentDashboardData }) {
                 type="button"
                 aria-selected={isActive}
                 onClick={() => setActive(key)}
-                className={`relative flex-1 rounded-lg px-2 py-2.5 text-sm font-medium transition ${
-                  isActive ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
-                }`}
+                className={`relative flex-1 rounded-lg px-2 py-2.5 text-sm font-medium transition ${isActive ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                  }`}
               >
                 {label}
                 {hasDebt && (

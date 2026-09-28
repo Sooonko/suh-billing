@@ -409,6 +409,7 @@ export default async function AdminPaymentsPage({
                       <PaymentActions
                         txn={{
                           id: row.id,
+                          txnDate: row.txn_date,
                           amount: row.amount,
                           // Үлдэгдэл = дүн − оногдсон нийлбэр. Оноох маягтын
                           // анхдагч дүн болно.
