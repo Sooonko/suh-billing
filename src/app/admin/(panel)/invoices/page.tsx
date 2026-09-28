@@ -6,7 +6,7 @@ import { InvoiceList, type InvoiceRow } from '@/components/admin/InvoiceList';
 import { AddInvoice } from '@/components/admin/AddInvoice';
 import { ExcelExportButton } from '@/components/admin/filters/ExcelExportButton';
 import { FilterField, FilterPanel } from '@/components/admin/filters/FilterPanel';
-import { MonthStepper } from '@/components/admin/filters/MonthStepper';
+import { MonthPicker } from '@/components/admin/filters/MonthPicker';
 import { ResultSummary } from '@/components/admin/filters/ResultSummary';
 import { SearchBox } from '@/components/admin/filters/SearchBox';
 import { SegmentedNav } from '@/components/admin/filters/SegmentedNav';
@@ -21,12 +21,14 @@ const CATEGORY_KEYS = CATEGORIES.map((c) => c.key);
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 /**
- * Бүртгэгдсэн сарууд — шүүлтүүрийн сонголт.
+ * Нэхэмжлэл бүртгэгдсэн сарууд.
+ *
+ * Шүүлтүүр нь ЭНЭ жагсаалтаар хязгаарлагдахгүй — сар сонгогч дурын
+ * сарыг хүлээж авна. Жагсаалт нь зөвхөн «дата аль сард байна» гэдгийг
+ * хэлж, анхдагч сарыг тогтооход хэрэглэгдэнэ.
  *
  * ЯАГААД КЭШЛЭВ: Supabase сервер хол байгаа тул хүсэлт бүр ~1–2 секунд
- * авдаг. Сарын жагсаалт нь ЗӨВХӨН импорт хийхэд өөрчлөгддөг атлаа хуудас
- * ачаалах бүрт дахин татагдаж, сар солих хугацааг хоёр дахин уртасгаж
- * байв. Импортын commit дээр `revalidateTag('invoices')` дуудагдана.
+ * авдаг. Импортын commit дээр `revalidateTag('invoices')` дуудагдана.
  */
 const loadInvoiceMonths = unstable_cache(
   async () => {
@@ -35,7 +37,9 @@ const loadInvoiceMonths = unstable_cache(
       .from('invoices')
       .select('billing_month')
       .order('billing_month', { ascending: false });
-    return [...new Set((data ?? []).map((r) => r.billing_month as string))];
+    return [...new Set((data ?? []).map((r) => r.billing_month as string))].sort((a, b) =>
+      b.localeCompare(a),
+    );
   },
   ['invoice-months'],
   { tags: ['invoices'], revalidate: 600 },
@@ -89,7 +93,9 @@ export default async function AdminInvoicesPage({
    */
   const months = await loadInvoiceMonths();
   const asked = params.month && MONTH_RE.test(params.month) ? params.month : null;
-  const month = asked && months.includes(asked) ? asked : (months[0] ?? '');
+  // Хүссэн сарыг ХЯЗГААРЛАХГҮЙ авна — нэхэмжлэлгүй сар ч нээгдэх ёстой
+  // (тэнд шинээр нэмэх боломжтой). Анхдагч нь дататай хамгийн шинэ сар.
+  const month = asked ?? months[0] ?? '';
   const rawRows = month ? await fetchInvoices(category, month) : [];
 
   const search = params.q?.trim() ?? '';
@@ -276,7 +282,7 @@ export default async function AdminInvoicesPage({
             </FilterField>
 
             <FilterField label="Сар">
-              <MonthStepper months={months} current={month} />
+              <MonthPicker current={month} />
             </FilterField>
 
             <FilterField label="Хайх">

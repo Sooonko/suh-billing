@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { formatMnt, previousMonth, shortMonth } from '@/lib/format';
+import { DeleteInvoiceButton } from './DeleteInvoiceButton';
 import type { BillCategory } from '@/lib/types';
 
 /**
@@ -105,13 +106,22 @@ function WaterRow({ invoice, showOwner }: { invoice: InvoiceRow; showOwner: bool
         <td className={`${CELL} font-semibold`}>{show(invoice.usage_amount)}</td>
         <td className={`${CELL} font-semibold`}>{formatMnt(invoice.bill_amount)}</td>
         <td className="px-2 py-2 text-right">
-          <button
-            type="button"
-            onClick={() => setEditing(true)}
-            className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-          >
-            Засах
-          </button>
+          <div className="flex items-center justify-end gap-1.5">
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+            >
+              Засах
+            </button>
+          <DeleteInvoiceButton
+            id={invoice.id}
+            flatNumber={invoice.flat_number}
+            category={invoice.category}
+            billingMonth={invoice.billing_month}
+            billAmount={invoice.bill_amount}
+          />
+          </div>
         </td>
       </tr>
     );
@@ -336,13 +346,22 @@ function PlainRow({
               </button>
             </>
           ) : (
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-            >
-              Засах
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+              >
+                Засах
+              </button>
+          <DeleteInvoiceButton
+                id={invoice.id}
+                flatNumber={invoice.flat_number}
+                category={invoice.category}
+                billingMonth={invoice.billing_month}
+                billAmount={invoice.bill_amount}
+              />
+            </>
           )}
         </div>
         {error && (
