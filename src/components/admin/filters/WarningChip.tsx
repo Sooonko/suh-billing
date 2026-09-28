@@ -1,4 +1,8 @@
+'use client';
+
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useTransition } from 'react';
 
 /**
  * Анхааруулах чип — «26 мөрд заалт нэмэгдээгүй» гэх мэт.
@@ -22,6 +26,10 @@ export function WarningChip({
   href?: string;
   active?: boolean;
 }) {
+  const router = useRouter();
+  // Чип нь шүүлт болдог тул дарахад дата шинээр татагдана — 1–2 секунд
+  const [pending, startTransition] = useTransition();
+
   if (count === 0) return null;
 
   const body = (
@@ -40,10 +48,17 @@ export function WarningChip({
       <span>
         <span className="font-bold tabular-nums">{count}</span> {label}
       </span>
-      {active && (
-        <span aria-hidden className="ml-0.5 text-amber-700">
-          ✕
-        </span>
+      {pending ? (
+        <svg viewBox="0 0 24 24" fill="none" className="ml-0.5 h-3 w-3 animate-spin">
+          <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" opacity="0.3" />
+          <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+        </svg>
+      ) : (
+        active && (
+          <span aria-hidden className="ml-0.5 text-amber-700">
+            ✕
+          </span>
+        )
       )}
     </>
   );
@@ -59,7 +74,14 @@ export function WarningChip({
     <Link
       href={href}
       aria-pressed={active}
+      aria-busy={pending || undefined}
       title={active ? 'Шүүлтийг цуцлах' : `${count} мөрийг л харах`}
+      onClick={(e) => {
+        // Хөтчийн тусгай үйлдлийг хөндөхгүй
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+        e.preventDefault();
+        startTransition(() => router.push(href));
+      }}
       className={`${shell} transition hover:border-amber-400 hover:bg-amber-100`}
     >
       {body}
