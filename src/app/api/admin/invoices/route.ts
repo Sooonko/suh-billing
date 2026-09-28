@@ -55,7 +55,8 @@ async function loadTariffsFor(
  * Body: { category, billingMonth, flatNumber, note?,
  *         hotPrev?, hotCurrent?, coldPrev?, coldCurrent?,   // ус дулаан
  *         prevReading?, currentReading?,                    // цахилгаан
- *         billAmount? }                                     // СӨХ
+ *         billAmount?,                                      // СӨХ
+ *         directAmount? }   // true бол заалтгүйгээр billAmount-ыг шууд бичнэ
  */
 export async function POST(request: Request) {
   const admin = await requireAdmin();
@@ -117,12 +118,45 @@ export async function POST(request: Request) {
     note,
   };
 
-  if (category === 'SOH') {
+  /**
+   * ГАРААР ДҮН БИЧИХ горим (эхний үлдэгдэл / хуримтлагдсан өр).
+   *
+   * ЯАГААД: систем нэвтрүүлэхээс ӨМНӨХ саруудын өр цаасан дээр нэг дүнгээр
+   * л үлдсэн байдаг — тоолуурын заалт нь алга, тэр саруудад тариф ч
+   * тохируулаагүй. Жишээ: 902 Өв соёл 5,6,7 сарын өр 106,912₮.
+   * Заалт шаардвал ийм өрийг ОГТ оруулж чадахгүй.
+   *
+   * Заалтаас бодсон нэхэмжлэлээс ЯЛГАРЧ харагдах ёстой тул breakdown-д
+   * тусгай мөр үлдээж, тэмдэглэлийг заавал болгов.
+   */
+  const isDirect = body.directAmount === true;
+
+  if (category === 'SOH' || isDirect) {
     const billAmount = Number(body.billAmount);
     if (!Number.isFinite(billAmount) || billAmount < 0) {
       return NextResponse.json({ error: 'Дүн буруу байна' }, { status: 400 });
     }
     row.bill_amount = billAmount;
+
+    if (isDirect && category !== 'SOH') {
+      // Тэмдэглэлгүй бол хожим «энэ дүн хаанаас гарав?» гэж ойлгогдохгүй
+      if (!note) {
+        return NextResponse.json(
+          { error: 'Гараар дүн бичихэд тэмдэглэл заавал хэрэгтэй (жишээ: «5,6,7 сарын өр»)' },
+          { status: 400 },
+        );
+      }
+      row.breakdown = [
+        {
+          code: 'MANUAL',
+          label: note,
+          unit: 'FIXED',
+          rate: billAmount,
+          qty: 1,
+          amount: billAmount,
+        },
+      ];
+    }
   } else {
     const tariffs = await loadTariffsFor(db, category, billingMonth, entrance);
     if (!tariffs.length) {

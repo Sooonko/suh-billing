@@ -57,6 +57,18 @@ export function AddInvoice({
   const [values, setValues] = useState<Record<string, string>>({});
   const [note, setNote] = useState('');
 
+  /**
+   * Заалтгүйгээр дүнг ШУУД бичих горим.
+   *
+   * ЯАГААД: систем нэвтрүүлэхээс өмнөх хуримтлагдсан өр цаасан дээр нэг
+   * дүнгээр л үлдсэн байдаг — тоолуурын заалт нь алга, тэр саруудад тариф ч
+   * тохируулаагүй тул бодуулах боломжгүй. Тэр өрийг оруулах цорын ганц гарц.
+   *
+   * СӨХ нь тоолуургүй тул ХЭДИЙНЭ дүнгээр ордог — тэнд сонголт утгагүй.
+   */
+  const [direct, setDirect] = useState(false);
+  const isDirect = category !== 'SOH' && direct;
+
   const set = (key: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setValues((v) => ({ ...v, [key]: e.target.value }));
 
@@ -66,6 +78,7 @@ export function AddInvoice({
     setFlatNumber('');
     setValues({});
     setNote('');
+    setDirect(false);
     // Сарыг шүүлтүүрийн утга руу нь буцаана — дараагийн нэмэлт нь
     // тэр сараас эхлэх нь хамгийн түгээмэл хэрэгцээ
     setMonth(defaultMonth);
@@ -93,7 +106,9 @@ export function AddInvoice({
         billingMonth: month,
         flatNumber: Number(flatNumber),
         note: note || null,
-        ...(category === 'WATER_HEAT'
+        ...(isDirect
+          ? { directAmount: true, billAmount: num('amount') }
+          : category === 'WATER_HEAT'
           ? {
               hotPrev: num('hotPrev'),
               hotCurrent: num('hotCurrent'),
@@ -180,7 +195,20 @@ export function AddInvoice({
           />
         </Field>
 
-        {category === 'WATER_HEAT' && (
+        {isDirect && (
+          <Field label="Дүн (₮)">
+            <input
+              required
+              inputMode="numeric"
+              value={values.amount ?? ''}
+              onChange={set('amount')}
+              placeholder="106912"
+              className={INPUT}
+            />
+          </Field>
+        )}
+
+        {!isDirect && category === 'WATER_HEAT' && (
           <>
             <Field label="Халуун өмнөх">
               <input inputMode="decimal" value={values.hotPrev ?? ''} onChange={set('hotPrev')} className={INPUT} />
@@ -197,7 +225,7 @@ export function AddInvoice({
           </>
         )}
 
-        {category === 'ELECTRICITY' && (
+        {!isDirect && category === 'ELECTRICITY' && (
           <>
             <Field label="Өмнөх заалт">
               <input inputMode="decimal" value={values.prev ?? ''} onChange={set('prev')} className={INPUT} />
@@ -214,15 +242,38 @@ export function AddInvoice({
           </Field>
         )}
 
-        <Field label="Тэмдэглэл">
+        <Field label={isDirect ? 'Тэмдэглэл (заавал)' : 'Тэмдэглэл'}>
           <input
+            required={isDirect}
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder="Excel-д байгаагүй"
+            placeholder={isDirect ? '5,6,7 сарын өр' : 'Excel-д байгаагүй'}
             className={INPUT}
           />
         </Field>
       </div>
+
+      {/*
+        Заалтгүй горимыг талбаруудын ДООР тавив: энгийн тохиолдолд заалтаар
+        бодуулах нь зөв, энэ нь ховор гарц тул анхаарлыг нь сарниулах ёсгүй.
+      */}
+      {category !== 'SOH' && (
+        <label className="mt-3 flex items-start gap-2.5 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+          <input
+            type="checkbox"
+            checked={direct}
+            onChange={(e) => setDirect(e.target.checked)}
+            className="mt-0.5 h-4 w-4 shrink-0 accent-slate-900"
+          />
+          <span className="text-sm leading-snug text-slate-700">
+            Заалтгүйгээр <b>дүнг шууд бичих</b>
+            <span className="block text-xs text-slate-500">
+              Систем нэвтрүүлэхээс өмнөх хуримтлагдсан өр оруулахад. Тоолуурын заалт
+              шаардахгүй, тариф ч хэрэггүй.
+            </span>
+          </span>
+        </label>
+      )}
 
       {error && (
         <p role="alert" className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -241,7 +292,9 @@ export function AddInvoice({
         <p className="text-xs text-slate-500">
           {category === 'SOH'
             ? 'СӨХ нь тоолуургүй тул дүнг шууд бичнэ.'
-            : 'Дүнг систем заалтаас бодно — импортоор орсонтой ижил дүрмээр.'}
+            : isDirect
+              ? 'Бичсэн дүн шууд өр болно — систем бодохгүй.'
+              : 'Дүнг систем заалтаас бодно — импортоор орсонтой ижил дүрмээр.'}
         </p>
       </div>
     </form>
