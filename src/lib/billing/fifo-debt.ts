@@ -107,7 +107,17 @@ export interface PaymentLine {
 /** Нэг төлбөр аль сарыг хэдээр хассан бэ */
 export interface Coverage {
   month: string;
+  /** Энэ төлбөрөөс тэр сард оногдсон дүн */
   amount: number;
+  /**
+   * Тэр сарын БҮТЭН нэхэмжлэл.
+   *
+   * Оршин суугч «хэдийн эсрэг хэдийг төлсөн бэ» гэдгийг харах ёстой.
+   * Хассан сарын нэхэмжлэлийг харуулж байгаа учир харьцуулалт утгатай —
+   * өмнө нь төлбөр ХИЙСЭН сарын нэхэмжлэлийг харуулдаг тул төөрөгдүүлж
+   * байв.
+   */
+  billed: number;
 }
 
 /**
@@ -143,7 +153,7 @@ export function allocatePaymentsToMonths(
     const open = invoices
       .filter((i) => i.category === category)
       .sort((a, b) => a.month.localeCompare(b.month))
-      .map((i) => ({ month: i.month, left: i.billed }));
+      .map((i) => ({ month: i.month, left: i.billed, billed: i.billed }));
 
     const mine = payments
       .filter((p) => p.category === category)
@@ -162,7 +172,7 @@ export function allocatePaymentsToMonths(
         const take = Math.min(pool, slot.left);
         slot.left = money(slot.left - take);
         pool = money(pool - take);
-        covers.push({ month: slot.month, amount: money(take) });
+        covers.push({ month: slot.month, amount: money(take), billed: money(slot.billed) });
       }
 
       result.set(payment.id, covers);

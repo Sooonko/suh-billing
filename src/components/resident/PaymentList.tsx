@@ -102,6 +102,9 @@ export function PaymentList({ payments }: { payments: PaymentEntry[] }) {
                   <th className="hidden px-3 py-2 text-left font-medium sm:table-cell">
                     Ямар сарын төлбөрт
                   </th>
+                  <th className="hidden px-3 py-2 text-right font-medium sm:table-cell">
+                    Тухайн сарын нэхэмжлэл
+                  </th>
                   <th className="px-4 py-2 text-right font-medium">Төлсөн</th>
                 </tr>
               </thead>
@@ -118,20 +121,33 @@ export function PaymentList({ payments }: { payments: PaymentEntry[] }) {
                         {CATEGORY_LABEL[payment.category]}
                       </span>
                     </td>
+                    {/*
+                      Хоёр багана МӨР МӨРӨӨР эгнэнэ: нэг төлбөр хоёр сарыг
+                      хассан бол «8 сар / 9 сар» ба «30,000₮ / 50,000₮» нь
+                      хажуу хажуудаа зөв тааран харагдана.
+                    */}
                     <td className="hidden px-3 py-2.5 text-left text-xs text-slate-500 sm:table-cell">
                       {payment.covers.length === 0 ? (
                         <span className="text-blue-700">илүү төлөлт</span>
                       ) : (
-                        payment.covers
-                          .map(
-                            (c) =>
-                              `${formatBillingMonth(c.month).replace(/^\d{4} оны /, '')}` +
-                              // Нэг төлбөр хоёр сарыг хассан бол аль сард
-                              // хэдийг хассаныг хэлнэ
-                              (payment.covers.length > 1 ? ` ${formatMnt(c.amount)}` : ''),
-                          )
-                          .join(' · ')
+                        payment.covers.map((c) => (
+                          <span key={c.month} className="block whitespace-nowrap leading-relaxed">
+                            {formatBillingMonth(c.month).replace(/^\d{4} оны /, '')}
+                            {payment.covers.length > 1 && (
+                              <span className="ml-1.5 text-emerald-700">{formatMnt(c.amount)}</span>
+                            )}
+                          </span>
+                        ))
                       )}
+                    </td>
+                    <td className="hidden px-3 py-2.5 text-right text-xs tabular-nums text-slate-500 sm:table-cell">
+                      {payment.covers.length === 0
+                        ? '—'
+                        : payment.covers.map((c) => (
+                            <span key={c.month} className="block whitespace-nowrap leading-relaxed">
+                              {formatMnt(c.billed)}
+                            </span>
+                          ))}
                     </td>
                     <td className="whitespace-nowrap px-4 py-2.5 text-right font-semibold tabular-nums text-emerald-700">
                       {formatMnt(payment.amount)}

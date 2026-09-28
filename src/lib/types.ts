@@ -69,7 +69,7 @@ export interface PaymentEntry {
    *
    * Хоосон массив = илүү төлөлт, ямар ч сард наалдаагүй.
    */
-  covers: { month: string; amount: number }[];
+  covers: { month: string; amount: number; billed: number }[];
 }
 
 /** invoices.breakdown доторх нэг мөр */
