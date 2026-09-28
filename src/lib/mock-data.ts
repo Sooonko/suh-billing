@@ -81,8 +81,11 @@ export const MOCK_RESIDENT: ResidentDashboardData = {
     { month: '2026-09', category: 'SOH', billed: 25000, remaining: 25000 },
   ],
   payments: [
-    { id: 'p1', month: '2026-09', date: '2026-09-18T00:00:00Z', category: 'WATER_HEAT', amount: 70420.7, billedThatMonth: 50420.7 },
-    { id: 'p2', month: '2026-09', date: '2026-09-12T00:00:00Z', category: 'ELECTRICITY', amount: 33370, billedThatMonth: 18370 },
-    { id: 'p3', month: '2026-08', date: '2026-08-15T00:00:00Z', category: 'ELECTRICITY', amount: 15000, billedThatMonth: 15000 },
+    { id: 'p1', month: '2026-09', date: '2026-09-18T00:00:00Z', category: 'WATER_HEAT', amount: 70420.7,
+      covers: [{ month: '2026-08', amount: 20000 }, { month: '2026-09', amount: 50420.7 }] },
+    { id: 'p2', month: '2026-09', date: '2026-09-12T00:00:00Z', category: 'ELECTRICITY', amount: 33370,
+      covers: [{ month: '2026-09', amount: 33370 }] },
+    { id: 'p3', month: '2026-08', date: '2026-08-15T00:00:00Z', category: 'ELECTRICITY', amount: 15000,
+      covers: [{ month: '2026-08', amount: 15000 }] },
   ],
 };

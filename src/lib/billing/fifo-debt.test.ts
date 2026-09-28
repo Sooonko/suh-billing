@@ -1,4 +1,9 @@
-import { splitDebtByMonth, debtForMonth, type InvoiceLine } from './fifo-debt';
+import {
+  allocatePaymentsToMonths,
+  debtForMonth,
+  splitDebtByMonth,
+  type InvoiceLine,
+} from './fifo-debt';
 import { hasDebt } from '@/lib/money';
 import type { BillCategory } from '@/lib/types';
 
@@ -145,4 +150,47 @@ console.log(`\n${ok}/${scenarios.length + 1} FIFO тохиолдол зөв`);
   console.log(
     `  ${pass ? '✅' : '❌'} Аравтын үлдэгдэл ${residue.toFixed(2)}₮ нь өр гэж тооцогдохгүй`,
   );
+}
+
+// ── Төлбөр аль сарыг хассан бэ ──────────────────────────────────────────
+// 116 тоотын жинхэнэ тохиолдол: 9 сарын 4-нд 8 САРЫНХАА төлбөрийг төлсөн.
+// Хүснэгт «9 сарын нэхэмжлэл» гэж харуулдаг тул «9 сараа дутуу төлсөн»
+// мэт харагдаж байв.
+{
+  const invoices: InvoiceLine[] = [
+    { month: '2026-08', category: W, billed: 62_260 },
+    { month: '2026-09', category: W, billed: 121_220 },
+  ];
+  const cover = allocatePaymentsToMonths(invoices, [
+    { id: 'a', category: W, date: '2026-09-04T00:00:00Z', amount: 62_260 },
+  ]);
+  const covers = cover.get('a') ?? [];
+  const pass = covers.length === 1 && covers[0].month === '2026-08' && covers[0].amount === 62_260;
+  console.log(`  ${pass ? '✅' : '❌'} 9 сард хийсэн төлбөр 8 САРЫГ хассан гэж гарна`);
+}
+{
+  // Нэг төлбөр хоёр сарыг хасах тохиолдол
+  const cover = allocatePaymentsToMonths(
+    [
+      { month: '2026-08', category: W, billed: 30_000 },
+      { month: '2026-09', category: W, billed: 50_000 },
+    ],
+    [{ id: 'b', category: W, date: '2026-09-20T00:00:00Z', amount: 45_000 }],
+  );
+  const c = cover.get('b') ?? [];
+  const pass =
+    c.length === 2 && c[0].month === '2026-08' && c[0].amount === 30_000 && c[1].amount === 15_000;
+  console.log(`  ${pass ? '✅' : '❌'} Нэг төлбөр хоёр сарыг хасвал тус тусад нь хэлнэ`);
+}
+{
+  // Илүү төлөлт ямар ч сард наалдахгүй
+  const cover = allocatePaymentsToMonths(
+    [{ month: '2026-09', category: W, billed: 10_000 }],
+    [
+      { id: 'c1', category: W, date: '2026-09-01T00:00:00Z', amount: 10_000 },
+      { id: 'c2', category: W, date: '2026-09-02T00:00:00Z', amount: 5_000 },
+    ],
+  );
+  const pass = (cover.get('c1') ?? []).length === 1 && (cover.get('c2') ?? []).length === 0;
+  console.log(`  ${pass ? '✅' : '❌'} Илүү төлөлт ямар ч сард наалдахгүй`);
 }

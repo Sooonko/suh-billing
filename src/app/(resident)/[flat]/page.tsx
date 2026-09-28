@@ -1,6 +1,11 @@
 import { notFound } from 'next/navigation';
 import { ResidentDashboard } from '@/components/resident/ResidentDashboard';
-import { splitDebtByMonth, type InvoiceLine } from '@/lib/billing/fifo-debt';
+import {
+  allocatePaymentsToMonths,
+  splitDebtByMonth,
+  type InvoiceLine,
+  type PaymentLine,
+} from '@/lib/billing/fifo-debt';
 import { hasDebt } from '@/lib/money';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type {
@@ -59,23 +64,19 @@ export default async function FlatPage({ params }: { params: Promise<{ flat: str
     billedByKey.set(`${row.category}-${row.billing_month}`, Number(row.bill_amount));
   }
 
-  const payments: PaymentEntry[] = (paid ?? [])
-    .flatMap((row, i) => {
-      const txn = row.transactions as unknown as { txn_date: string } | null;
-      if (!txn?.txn_date) return [];
-      const month = String(txn.txn_date).slice(0, 7);
-      return [
-        {
-          id: `pay-${i}`,
-          month,
-          date: txn.txn_date,
-          category: row.category as BillCategory,
-          amount: Number(row.amount),
-          billedThatMonth: billedByKey.get(`${row.category}-${month}`) ?? null,
-        },
-      ];
-    })
-    .sort((a, b) => b.date.localeCompare(a.date));
+  /** Төлбөрүүд — эхлээд хуваарилалт бодохын тулд хавтгай хэлбэрээр */
+  const paymentLines: PaymentLine[] = (paid ?? []).flatMap((row, i) => {
+    const txn = row.transactions as unknown as { txn_date: string } | null;
+    if (!txn?.txn_date) return [];
+    return [
+      {
+        id: `pay-${i}`,
+        category: row.category as BillCategory,
+        date: txn.txn_date,
+        amount: Number(row.amount),
+      },
+    ];
+  });
 
   /**
    * Өр үүссэн саруудыг FIFO дүрмээр тогтооно.
@@ -95,6 +96,23 @@ export default async function FlatPage({ params }: { params: Promise<{ flat: str
     category: row.category as BillCategory,
     billed: Number(row.bill_amount),
   }));
+
+  /**
+   * Төлбөр бүр АЛЬ САРЫГ хассаныг FIFO-гоор тогтооно — задаргаатай ижил
+   * дүрэм тул хоёр хүснэгт зөрөх боломжгүй.
+   */
+  const coverage = allocatePaymentsToMonths(invoiceLines, paymentLines);
+  const payments: PaymentEntry[] = paymentLines
+    .map((p) => ({
+      id: p.id,
+      // Шүүлт нь төлбөр ХИЙСЭН сараар — «би 9 сард хэд төлсөн бэ»
+      month: p.date.slice(0, 7),
+      date: p.date,
+      category: p.category,
+      amount: p.amount,
+      covers: coverage.get(p.id) ?? [],
+    }))
+    .sort((a, b) => b.date.localeCompare(a.date));
 
   // Задаргаа нь бүрэн төлөгдсөн сарыг Ч буцаадаг — өртэйг л харуулна.
   // 50₮-өөс бага үлдэгдлийг төлөх боломжгүй (эргэлтэд байхгүй) тул

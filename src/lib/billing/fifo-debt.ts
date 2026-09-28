@@ -94,3 +94,80 @@ export function debtForMonth(
   }
   return out;
 }
+
+/** Нэг төлбөр — FIFO хуваарилалтад оруулах оролт */
+export interface PaymentLine {
+  id: string;
+  category: BillCategory;
+  /** ISO огноо — эрэмбэлэхэд хэрэглэнэ */
+  date: string;
+  amount: number;
+}
+
+/** Нэг төлбөр аль сарыг хэдээр хассан бэ */
+export interface Coverage {
+  month: string;
+  amount: number;
+}
+
+/**
+ * Төлбөр бүр АЛЬ САРЫН нэхэмжлэлийг хассаныг FIFO дүрмээр тогтооно.
+ *
+ * ЯАГААД ХЭРЭГТЭЙ ВЭ:
+ * «Төлсөн түүх» хүснэгт нь төлбөр хийсэн САРЫН нэхэмжлэлийг хажууд
+ * харуулдаг байв. Гэтэл 116 тоот 9 сарын 4-нд 8 САРЫНХАА төлбөрийг
+ * төлсөн — хүснэгт нь 9 сарын нэхэмжлэл 82,638₮-ийн хажууд «төлсөн
+ * 35,614₮» гэж бичсэн тул «9 сараа дутуу төлсөн» мэт харагдсан.
+ *
+ * Мөнгө тодорхой сарын нэхэмжлэлд наалддаггүй тул дүрмээр л тогтооно:
+ * хуучин төлбөр хуучин өрийг эхэлж хаана. Задаргааны хүснэгттэй
+ * (`splitDebtByMonth`) ИЖИЛ дүрэм — хоёр тал зөрөх боломжгүй.
+ *
+ * @returns төлбөрийн id → хассан сарууд. Илүү төлөлт нь ямар ч сард
+ *          наалдахгүй тул жагсаалтаас гарна (хоосон массив).
+ */
+export function allocatePaymentsToMonths(
+  invoices: InvoiceLine[],
+  payments: readonly PaymentLine[],
+): Map<string, Coverage[]> {
+  const result = new Map<string, Coverage[]>();
+
+  // Ангилал бүр ТУСДАА — усны төлбөр цахилгааны өрийг хаахгүй
+  const categories = new Set<BillCategory>([
+    ...invoices.map((i) => i.category),
+    ...payments.map((p) => p.category),
+  ]);
+
+  for (const category of categories) {
+    /** Сар бүрийн хаагдаагүй үлдэгдэл, хуучнаас нь эрэмбэлсэн */
+    const open = invoices
+      .filter((i) => i.category === category)
+      .sort((a, b) => a.month.localeCompare(b.month))
+      .map((i) => ({ month: i.month, left: i.billed }));
+
+    const mine = payments
+      .filter((p) => p.category === category)
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    for (const payment of mine) {
+      let pool = payment.amount;
+      const covers: Coverage[] = [];
+
+      for (const slot of open) {
+        // ⚠️ `pool > 0` гэж шалгавал аравтын үлдэц (0.03₮) дараагийн
+        // сарыг «хассан» гэж бүртгэж, дэлгэц дээр «9 сар 0₮» гэсэн хог
+        // мөр гаргадаг. 1₮-өөс бага хэсгийг үл хэрэгсэнэ.
+        if (pool < 1) break;
+        if (slot.left < 1) continue;
+        const take = Math.min(pool, slot.left);
+        slot.left = money(slot.left - take);
+        pool = money(pool - take);
+        covers.push({ month: slot.month, amount: money(take) });
+      }
+
+      result.set(payment.id, covers);
+    }
+  }
+
+  return result;
+}

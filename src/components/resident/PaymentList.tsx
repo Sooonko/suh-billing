@@ -94,8 +94,13 @@ export function PaymentList({ payments }: { payments: PaymentEntry[] }) {
                 <tr className="border-b border-slate-200">
                   <th className="px-4 py-2 text-left font-medium">Огноо</th>
                   <th className="px-3 py-2 text-left font-medium">Ангилал</th>
-                  <th className="hidden px-3 py-2 text-right font-medium sm:table-cell">
-                    Тухайн сарын нэхэмжлэл
+                  {/*
+                    Өмнө нь «тухайн сарын нэхэмжлэл» байсан нь ТӨЛБӨР
+                    ХИЙСЭН сарын нэхэмжлэлийг харуулдаг тул төөрөгдүүлж
+                    байв. Одоо тэр төлбөр ЯМАР САРЫГ хассаныг хэлнэ.
+                  */}
+                  <th className="hidden px-3 py-2 text-left font-medium sm:table-cell">
+                    Ямар сарын төлбөрт
                   </th>
                   <th className="px-4 py-2 text-right font-medium">Төлсөн</th>
                 </tr>
@@ -113,8 +118,20 @@ export function PaymentList({ payments }: { payments: PaymentEntry[] }) {
                         {CATEGORY_LABEL[payment.category]}
                       </span>
                     </td>
-                    <td className="hidden px-3 py-2.5 text-right tabular-nums text-slate-500 sm:table-cell">
-                      {payment.billedThatMonth === null ? '—' : formatMnt(payment.billedThatMonth)}
+                    <td className="hidden px-3 py-2.5 text-left text-xs text-slate-500 sm:table-cell">
+                      {payment.covers.length === 0 ? (
+                        <span className="text-blue-700">илүү төлөлт</span>
+                      ) : (
+                        payment.covers
+                          .map(
+                            (c) =>
+                              `${formatBillingMonth(c.month).replace(/^\d{4} оны /, '')}` +
+                              // Нэг төлбөр хоёр сарыг хассан бол аль сард
+                              // хэдийг хассаныг хэлнэ
+                              (payment.covers.length > 1 ? ` ${formatMnt(c.amount)}` : ''),
+                          )
+                          .join(' · ')
+                      )}
                     </td>
                     <td className="whitespace-nowrap px-4 py-2.5 text-right font-semibold tabular-nums text-emerald-700">
                       {formatMnt(payment.amount)}
