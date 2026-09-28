@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { formatMnt } from '@/lib/format';
+import { hasDebt } from '@/lib/money';
 import { buildPaymentReference } from '@/lib/payment-reference';
 import type { BillCategory } from '@/lib/types';
 
@@ -110,8 +111,10 @@ export function PayPanel({
 }) {
   const [open, setOpen] = useState(false);
 
-  // Өргүй эсвэл илүү төлсөн бол төлөх зүйл алга
-  if (amount <= 0) return null;
+  // Өргүй, илүү төлсөн, эсвэл 50₮-өөс бага үлдэгдэлтэй бол төлөх зүйл алга.
+  // Сүүлийнх нь аравтын бөөрөнхийллийн үлдэц — оршин суугч түүнийг
+  // шилжүүлэх боломжгүй тул товч гаргах нь төөрөгдөл (money.ts).
+  if (!hasDebt(amount)) return null;
   // Данс бүртгэгдээгүй бол хуурамч заавар өгөхгүй
   if (!accountNumber) return null;
 

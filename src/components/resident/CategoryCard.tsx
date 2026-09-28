@@ -1,4 +1,5 @@
 import { formatBillingMonth, formatMnt, formatReading, previousMonth, shortMonth } from '@/lib/format';
+import { settledBalance } from '@/lib/money';
 import { CATEGORY_LABEL } from '@/lib/types';
 import type { FlatCategoryState } from '@/lib/types';
 import { BillBreakdown } from './BillBreakdown';
@@ -53,9 +54,18 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
  */
 export function CategoryCard({ state, hasMeter, label, flatNumber, account }: Props) {
   const {
-    balance, bill_amount, billing_month, prev_reading, current_reading, usage_amount, status,
+    balance: rawBalance, bill_amount, billing_month, prev_reading, current_reading, usage_amount, status,
     hot_prev, hot_current, cold_prev, cold_current, breakdown, total_billed, total_paid,
   } = state;
+
+  /**
+   * 50₮-өөс бага үлдэгдлийг ТЭГ гэж харуулна.
+   *
+   * Нэхэмжлэл аравтын оронтой бодогддог тул бүтэн төлсөн айлд ч 0.86₮
+   * үлддэг. formatMnt нь түүнийг «1₮» болгож, төлөх товч гарч ирдэг
+   * байсан — гэтэл 1₮-ийг шилжүүлэх боломжгүй (money.ts).
+   */
+  const balance = settledBalance(Number(rawBalance));
 
   // Ус дулаанд ХОЁР тоолуур. Заалт байгаа эсэхээр нь таньна — ангилал шалгахгүй,
   // ингэснээр хожим өөр ангилал хоёр тоолууртай болоход ч ажиллана.

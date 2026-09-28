@@ -34,3 +34,14 @@ export function hasDebt(balance: number): boolean {
 export function hasOverpaid(balance: number): boolean {
   return balance <= -SETTLED_EPSILON;
 }
+
+/**
+ * ХАРУУЛАХАД зориулсан үлдэгдэл — хилийн доторхыг ТЭГ болгоно.
+ *
+ * `formatMnt` нь бүхэл төгрөг хүртэл бөөрөнхийлдөг тул 0.86₮ нь «1₮» гэж
+ * харагддаг. Тэр «1₮»-ийг оршин суугч төлж ЧАДАХГҮЙ (50₮-өөс бага дүнг
+ * шилжүүлэх боломжгүй) тул харуулах ч, төлөх товч гаргах ч утгагүй.
+ */
+export function settledBalance(balance: number): number {
+  return isSettled(balance) ? 0 : balance;
+}

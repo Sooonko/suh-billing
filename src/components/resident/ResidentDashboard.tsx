@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { formatMnt } from '@/lib/format';
 import { CATEGORIES, type BillCategory, type ResidentDashboardData } from '@/lib/types';
+import { settledBalance, hasDebt as isOwing } from '@/lib/money';
 import { CategoryCard } from './CategoryCard';
 import { DebtBreakdown } from './DebtBreakdown';
 import { PaymentList } from './PaymentList';
@@ -28,7 +29,9 @@ export function ResidentDashboard({ data }: { data: ResidentDashboardData }) {
 
   // Нийт дүн = 3 ангиллын үлдэгдлийн нийлбэр.
   // Илүү төлөлт сөрөг тул аяндаа хасагдаж, жинхэнэ төлөх дүн гарна.
-  const total = data.categories.reduce((sum, c) => sum + c.balance, 0);
+  // 50₮-өөс бага үлдэгдэл нь аравтын бөөрөнхийллийн үлдэц — оршин суугч
+  // түүнийг шилжүүлэх боломжгүй тул нийт дүнд оруулахгүй (money.ts)
+  const total = data.categories.reduce((sum, c) => sum + settledBalance(Number(c.balance)), 0);
 
   /** Үлдэгдлийн тэмдгээс хамаарсан өнгө — нэг эх сурвалжаас удирдана */
   const tone = (value: number) =>
@@ -78,7 +81,7 @@ export function ResidentDashboard({ data }: { data: ResidentDashboardData }) {
         */}
         <div className="grid grid-cols-3 divide-x divide-slate-100 border-t border-slate-100 md:w-80 md:shrink-0 md:border-l md:border-t-0">
           {CATEGORIES.map(({ key, label }) => {
-            const balance = byCategory.get(key)?.balance ?? 0;
+            const balance = settledBalance(Number(byCategory.get(key)?.balance ?? 0));
             return (
               <button
                 key={key}
@@ -110,7 +113,7 @@ export function ResidentDashboard({ data }: { data: ResidentDashboardData }) {
             const isActive = key === active;
             const state = byCategory.get(key);
             // Өртэй ангилал дээр улаан цэг тавьж анхаарал татна
-            const hasDebt = state !== undefined && state.balance > 0;
+            const hasDebt = state !== undefined && isOwing(Number(state.balance));
 
             return (
               <button
