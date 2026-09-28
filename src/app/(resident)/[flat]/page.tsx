@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { ResidentDashboard } from '@/components/resident/ResidentDashboard';
 import { splitDebtByMonth, type InvoiceLine } from '@/lib/billing/fifo-debt';
+import { hasDebt } from '@/lib/money';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type {
   BillCategory,
@@ -95,9 +96,11 @@ export default async function FlatPage({ params }: { params: Promise<{ flat: str
     billed: Number(row.bill_amount),
   }));
 
-  // Задаргаа нь бүрэн төлөгдсөн сарыг Ч буцаадаг — өртэйг л харуулна
+  // Задаргаа нь бүрэн төлөгдсөн сарыг Ч буцаадаг — өртэйг л харуулна.
+  // 1₮-өөс бага үлдэгдэл нь аравтын бөөрөнхийллийн үр дагавар тул
+  // «0₮ өртэй» гэсэн утгагүй мөр үүсгэхгүй (money.ts-ийг үзнэ үү).
   const debts: DebtRow[] = splitDebtByMonth(invoiceLines, paidByCategory)
-    .filter((row) => row.remaining > 0)
+    .filter((row) => hasDebt(row.remaining))
     .map(({ month, category, billed: amount, remaining }) => ({
       month,
       category,

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { formatMnt } from '@/lib/format';
+import { hasDebt, hasOverpaid } from '@/lib/money';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { fetchAllRows } from '@/lib/supabase/fetch-all';
 import { CATEGORIES, type BillCategory } from '@/lib/types';
@@ -72,10 +73,11 @@ async function loadStats() {
     acc.paid += Number(row.total_paid);
     // Өр ба илүү төлөлтийг ХОЛИХГҮЙ — нэгийг нөгөөгөөр нөхөх нь
     // цуглуулах ёстой дүнг далдалдаг
-    if (balance > 0) {
+    // 1₮-өөс бага зөрүү нь аравтын бөөрөнхийлөл — өр ч биш, илүү ч биш
+    if (hasDebt(balance)) {
       acc.debt += balance;
       acc.debtors++;
-    } else if (balance < 0) {
+    } else if (hasOverpaid(balance)) {
       acc.overpaid += -balance;
     }
     byCategory.set(category, acc);

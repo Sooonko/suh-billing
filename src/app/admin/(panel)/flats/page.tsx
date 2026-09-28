@@ -8,6 +8,7 @@ import { ResultSummary } from '@/components/admin/filters/ResultSummary';
 import { SearchBox } from '@/components/admin/filters/SearchBox';
 import { SegmentedNav } from '@/components/admin/filters/SegmentedNav';
 import { WarningChip } from '@/components/admin/filters/WarningChip';
+import { hasDebt, hasOverpaid, isSettled } from '@/lib/money';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { fetchAllRows } from '@/lib/supabase/fetch-all';
 import { CATEGORIES, CATEGORY_LABEL, type BillCategory } from '@/lib/types';
@@ -233,12 +234,13 @@ export default async function AdminFlatsPage({
     category ? f.byCategory[category].balance : f.totalBalance;
   const billedOf = (f: FlatBalance) => (category ? f.byCategory[category].billed : f.totalBilled);
 
-  if (state === 'debt') flats = flats.filter((f) => balanceOf(f) > 0);
+  // 1₮-өөс бага зөрүүг тэг гэж үзнэ — money.ts
+  if (state === 'debt') flats = flats.filter((f) => hasDebt(balanceOf(f)));
   // ⚠️ «Төлсөн» нь үлдэгдэл 0 гэсэн нөхцөл ДЭЭР нэхэмжилсэн байхыг шаардана.
   // Үүнгүйгээр нэхэмжлэл огт гараагүй айл «төлсөн» гэж гарч, бүх багана 0
   // харагдана — хэрэглэгч андуурах гол шалтгаан байсан.
-  if (state === 'paid') flats = flats.filter((f) => billedOf(f) > 0 && balanceOf(f) === 0);
-  if (state === 'over') flats = flats.filter((f) => balanceOf(f) < 0);
+  if (state === 'paid') flats = flats.filter((f) => billedOf(f) > 0 && isSettled(balanceOf(f)));
+  if (state === 'over') flats = flats.filter((f) => hasOverpaid(balanceOf(f)));
   if (state === 'zero') flats = flats.filter((f) => billedOf(f) === 0);
 
   if (flag === 'noinvoice') {
@@ -259,8 +261,8 @@ export default async function AdminFlatsPage({
 
   const allFlats = [...byFlat.values()];
   const totalPaid = allFlats.reduce((s, f) => s + f.totalPaid, 0);
-  const totalDebt = allFlats.reduce((s, f) => s + Math.max(f.totalBalance, 0), 0);
-  const debtors = allFlats.filter((f) => f.totalBalance > 0).length;
+  const totalDebt = allFlats.reduce((s, f) => s + (hasDebt(f.totalBalance) ? f.totalBalance : 0), 0);
+  const debtors = allFlats.filter((f) => hasDebt(f.totalBalance)).length;
 
   /** Шүүлт солиход бусад параметрийг хэвээр авч явах URL */
   const hrefWith = (patch: Record<string, string>) => {
@@ -280,7 +282,7 @@ export default async function AdminFlatsPage({
 
   // Илүү төлсөн айл — админ нүдээр шалгах ёстой тохиолдол. Хуулга буруу
   // ангилалд оногдсон эсвэл айл давхар төлсөн байж магадгүй.
-  const overpaid = allFlats.filter((f) => f.totalBalance < 0).length;
+  const overpaid = allFlats.filter((f) => hasOverpaid(f.totalBalance)).length;
 
   /**
    * Нэхэмжлэлийн мөр ОГТ байхгүй айл — жинхэнэ датаны дутуу.

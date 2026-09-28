@@ -1,4 +1,5 @@
 import { splitDebtByMonth, debtForMonth, type InvoiceLine } from './fifo-debt';
+import { hasDebt } from '@/lib/money';
 import type { BillCategory } from '@/lib/types';
 
 /**
@@ -126,3 +127,22 @@ if (pickOk) ok++;
 console.log(`  ${pickOk ? '✅' : '❌'} debtForMonth — сонгосон сарыг ангиллаар салгана`);
 
 console.log(`\n${ok}/${scenarios.length + 1} FIFO тохиолдол зөв`);
+
+// ── Мөнгөний нарийвчлалын хил ───────────────────────────────────────────
+// Нэхэмжлэл аравтын оронтой, төлбөр бүхэл төгрөгөөр ирдэг тул бага зэргийн
+// үлдэгдэл үүсдэг. Түүнийг «өр» гэж үзвэл айл бүтэн төлсөн ч «дутуу
+// төлсөн» гэж харагдана (115 тоот · цахилгаан · 0.02₮).
+{
+  const rows = splitDebtByMonth(
+    [
+      { month: '2026-08', category: W, billed: 42_183.54 },
+      { month: '2026-09', category: W, billed: 43_220.84 },
+    ],
+    new Map<BillCategory, number>([[W, 85_404.36]]),
+  );
+  const residue = rows.reduce((sum, r) => sum + r.remaining, 0);
+  const pass = Math.abs(residue - 0.02) < 0.0001 && !hasDebt(residue);
+  console.log(
+    `  ${pass ? '✅' : '❌'} Аравтын үлдэгдэл ${residue.toFixed(2)}₮ нь өр гэж тооцогдохгүй`,
+  );
+}
