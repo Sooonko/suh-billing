@@ -11,6 +11,7 @@ import { ResultSummary } from '@/components/admin/filters/ResultSummary';
 import { SearchBox } from '@/components/admin/filters/SearchBox';
 import { SegmentedNav } from '@/components/admin/filters/SegmentedNav';
 import { WarningChip } from '@/components/admin/filters/WarningChip';
+import { matchesSearch } from '@/lib/search-flat';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { formatBillingMonth } from '@/lib/format';
 import { CATEGORIES, CATEGORY_LABEL, type BillCategory } from '@/lib/types';
@@ -141,11 +142,8 @@ export default async function AdminInvoicesPage({
   invoices.sort((a, b) => a.flat_number - b.flat_number);
 
   if (search) {
-    const needle = search.toLowerCase();
-    invoices = invoices.filter(
-      (i) =>
-        String(i.flat_number).includes(needle) ||
-        (i.owner_name ?? '').toLowerCase().includes(needle),
+    invoices = invoices.filter((i) =>
+      matchesSearch(search, { flatNumber: i.flat_number, texts: [i.owner_name] }),
     );
   }
 
@@ -289,7 +287,7 @@ export default async function AdminInvoicesPage({
             </FilterField>
 
             <FilterField label="Хайх">
-              <SearchBox initial={search} />
+              <SearchBox placeholder="Тоот (яг) эсвэл эзний нэр" initial={search} />
             </FilterField>
           </FilterPanel>
 

@@ -13,6 +13,7 @@ import { SearchBox } from '@/components/admin/filters/SearchBox';
 import { SegmentedNav } from '@/components/admin/filters/SegmentedNav';
 import { WarningChip } from '@/components/admin/filters/WarningChip';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { matchesSearch } from '@/lib/search-flat';
 import { fetchAllRows } from '@/lib/supabase/fetch-all';
 import { CATEGORIES, CATEGORY_LABEL, type BankAccount, type BillCategory } from '@/lib/types';
 
@@ -139,11 +140,14 @@ export default async function AdminPaymentsPage({
   }));
 
   if (search) {
-    const needle = search.toLowerCase();
-    rows = rows.filter(
-      (r) =>
-        r.description.toLowerCase().includes(needle) ||
-        r.allocations.some((a) => a.flat.includes(needle)),
+    // Цэвэр тоо бол ТООТ-ын яг тохирол — «7» нь 178, 157-г татахгүй
+    rows = rows.filter((r) =>
+      matchesSearch(search, {
+        // Оногдсон тоот байвал түүнийг, үгүй бол таасныг нь авна
+        flatNumber:
+          r.allocations.length > 0 ? Number(r.allocations[0].flat) : r.parsed_flat_number,
+        texts: [r.description],
+      }),
     );
   }
 
@@ -313,7 +317,7 @@ export default async function AdminPaymentsPage({
         </FilterField>
 
         <FilterField label="Хайх">
-          <SearchBox placeholder="Тоот эсвэл гүйлгээний утга" initial={search} />
+          <SearchBox placeholder="Тоот (яг) эсвэл утга" initial={search} />
         </FilterField>
       </FilterPanel>
 

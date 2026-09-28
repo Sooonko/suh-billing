@@ -9,6 +9,7 @@ import { SearchBox } from '@/components/admin/filters/SearchBox';
 import { SegmentedNav } from '@/components/admin/filters/SegmentedNav';
 import { WarningChip } from '@/components/admin/filters/WarningChip';
 import { hasDebt, hasOverpaid, isSettled } from '@/lib/money';
+import { matchesSearch } from '@/lib/search-flat';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { fetchAllRows } from '@/lib/supabase/fetch-all';
 import { CATEGORIES, CATEGORY_LABEL, type BillCategory } from '@/lib/types';
@@ -252,10 +253,8 @@ export default async function AdminFlatsPage({
   }
 
   if (search) {
-    const needle = search.toLowerCase();
-    flats = flats.filter(
-      (f) =>
-        String(f.flatNumber).includes(needle) || (f.ownerName ?? '').toLowerCase().includes(needle),
+    flats = flats.filter((f) =>
+      matchesSearch(search, { flatNumber: f.flatNumber, texts: [f.ownerName] }),
     );
   }
 
@@ -431,7 +430,7 @@ export default async function AdminFlatsPage({
         </FilterField>
 
         <FilterField label="Хайх">
-          <SearchBox initial={search} />
+          <SearchBox placeholder="Тоот (яг) эсвэл эзний нэр" initial={search} />
         </FilterField>
       </FilterPanel>
 
