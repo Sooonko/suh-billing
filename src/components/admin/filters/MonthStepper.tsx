@@ -1,6 +1,8 @@
 'use client';
 
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useTransition } from 'react';
+import { Spinner } from './MonthPicker';
 import { formatBillingMonth } from '@/lib/format';
 
 /**
@@ -27,6 +29,9 @@ export function MonthStepper({
 }) {
   const router = useRouter();
   const params = useSearchParams();
+  // Дата иртэл 1–2 секунд — тэмдэггүй бол дахин дахин дардаг
+  const [pending, startTransition] = useTransition();
+  const go = (href: string) => startTransition(() => router.push(href));
 
   /** Бусад шүүлтийг хэвээр хадгалаад зөвхөн сарыг сольсон URL */
   const hrefFor = (month: string | null) => {
@@ -50,7 +55,7 @@ export function MonthStepper({
         type="button"
         aria-label="Өмнөх сар"
         disabled={!older}
-        onClick={() => older && router.push(hrefFor(older))}
+        onClick={() => older && go(hrefFor(older))}
         className={arrow}
       >
         ‹
@@ -59,7 +64,7 @@ export function MonthStepper({
       <select
         aria-label="Сар"
         value={current ?? ''}
-        onChange={(e) => router.push(hrefFor(e.target.value || null))}
+        onChange={(e) => go(hrefFor(e.target.value || null))}
         className="h-9 rounded-lg border border-slate-300 px-3 text-sm font-medium outline-none focus:border-slate-900"
       >
         {allowAll && <option value="">{allLabel}</option>}
@@ -74,11 +79,12 @@ export function MonthStepper({
         type="button"
         aria-label="Дараах сар"
         disabled={!newer}
-        onClick={() => newer && router.push(hrefFor(newer))}
+        onClick={() => newer && go(hrefFor(newer))}
         className={arrow}
       >
         ›
       </button>
+      {pending && <Spinner label="Сар солиж байна" />}
     </div>
   );
 }

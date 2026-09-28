@@ -1,7 +1,8 @@
 'use client';
 
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useState } from 'react';
+import { useState, useTransition } from 'react';
+import { Spinner } from './MonthPicker';
 
 /**
  * Хайлтын талбар — томруулагчтай, Enter эсвэл «Шүүх»-ээр ажиллана.
@@ -22,6 +23,8 @@ export function SearchBox({
   const router = useRouter();
   const params = useSearchParams();
   const [value, setValue] = useState(initial);
+  // Хайх товч дарснаас хойш дата иртэл 1–2 секунд болдог
+  const [pending, startTransition] = useTransition();
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -29,7 +32,7 @@ export function SearchBox({
     const trimmed = value.trim();
     if (trimmed) next.set('q', trimmed);
     else next.delete('q');
-    router.push(`?${next.toString()}`);
+    startTransition(() => router.push(`?${next.toString()}`));
   }
 
   return (
@@ -57,9 +60,16 @@ export function SearchBox({
 
       <button
         type="submit"
-        className="h-9 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800"
+        disabled={pending}
+        className="inline-flex h-9 items-center gap-2 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60"
       >
-        Шүүх
+        {pending && (
+          <svg viewBox="0 0 24 24" fill="none" className="h-3.5 w-3.5 animate-spin">
+            <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" opacity="0.3" />
+            <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+          </svg>
+        )}
+        {pending ? 'Хайж байна…' : 'Шүүх'}
       </button>
 
       {initial && (
@@ -69,7 +79,7 @@ export function SearchBox({
             setValue('');
             const next = new URLSearchParams(params.toString());
             next.delete('q');
-            router.push(`?${next.toString()}`);
+            startTransition(() => router.push(`?${next.toString()}`));
           }}
           className="h-9 px-1 text-sm text-slate-400 underline decoration-slate-300 transition hover:text-slate-700"
         >
