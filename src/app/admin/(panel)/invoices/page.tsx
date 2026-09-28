@@ -41,7 +41,10 @@ const loadInvoiceMonths = unstable_cache(
       b.localeCompare(a),
     );
   },
-  ['invoice-months'],
+  // ⚠️ Түлхүүрт хувилбар бичсэн шалтгаан: `unstable_cache` нь түлхүүрээр
+  // хадгалдаг тул функцийн БУЦААХ ХЭЛБЭР өөрчлөгдвөл хуучин утга үйлчилж,
+  // хуудас чимээгүй эвдэрдэг. Хэлбэр солих бүрт хувилбарыг ахиулна.
+  ['invoice-months', 'v2'],
   { tags: ['invoices'], revalidate: 600 },
 );
 
@@ -114,25 +117,25 @@ export default async function AdminInvoicesPage({
   // дотоод мөрийг эрэмбэлдэг, эцэг мөрийг биш. Тоот нь холбоос дотор тул
   // JS талдаа эрэмбэлэх нь эргэлзээгүй зөв.
   let invoices: InvoiceRow[] = rawRows.map((row) => {
-      // PostgREST-ийн холбоос нэг объект болж ирнэ (!inner тул массив биш)
-      const flat = row.flats as unknown as { flat_number: number; owner_name: string | null };
-      return {
-        id: row.id as string,
-        flat_number: flat.flat_number,
-        owner_name: flat.owner_name,
-        category: row.category as BillCategory,
-        billing_month: row.billing_month as string,
-        prev_reading: row.prev_reading === null ? null : Number(row.prev_reading),
-        current_reading: row.current_reading === null ? null : Number(row.current_reading),
-        // numeric баганууд PostgREST-ээс текстээр ирдэг тул тоо болгоно
-        hot_prev: row.hot_prev === null ? null : Number(row.hot_prev),
-        hot_current: row.hot_current === null ? null : Number(row.hot_current),
-        cold_prev: row.cold_prev === null ? null : Number(row.cold_prev),
-        cold_current: row.cold_current === null ? null : Number(row.cold_current),
-        usage_amount: row.usage_amount === null ? null : Number(row.usage_amount),
-        bill_amount: Number(row.bill_amount),
-        note: row.note as string | null,
-      };
+    // PostgREST-ийн холбоос нэг объект болж ирнэ (!inner тул массив биш)
+    const flat = row.flats as unknown as { flat_number: number; owner_name: string | null };
+    return {
+      id: row.id as string,
+      flat_number: flat.flat_number,
+      owner_name: flat.owner_name,
+      category: row.category as BillCategory,
+      billing_month: row.billing_month as string,
+      prev_reading: row.prev_reading === null ? null : Number(row.prev_reading),
+      current_reading: row.current_reading === null ? null : Number(row.current_reading),
+      // numeric баганууд PostgREST-ээс текстээр ирдэг тул тоо болгоно
+      hot_prev: row.hot_prev === null ? null : Number(row.hot_prev),
+      hot_current: row.hot_current === null ? null : Number(row.hot_current),
+      cold_prev: row.cold_prev === null ? null : Number(row.cold_prev),
+      cold_current: row.cold_current === null ? null : Number(row.cold_current),
+      usage_amount: row.usage_amount === null ? null : Number(row.usage_amount),
+      bill_amount: Number(row.bill_amount),
+      note: row.note as string | null,
+    };
   });
 
   invoices.sort((a, b) => a.flat_number - b.flat_number);
@@ -156,9 +159,9 @@ export default async function AdminInvoicesPage({
   const meterPairs = (i: InvoiceRow): [number | null, number | null][] =>
     i.category === 'WATER_HEAT'
       ? [
-          [i.hot_prev, i.hot_current],
-          [i.cold_prev, i.cold_current],
-        ]
+        [i.hot_prev, i.hot_current],
+        [i.cold_prev, i.cold_current],
+      ]
       : i.category === 'ELECTRICITY'
         ? [[i.prev_reading, i.current_reading]]
         : [];
@@ -177,8 +180,8 @@ export default async function AdminInvoicesPage({
     ? invoices
     : flag === 'nogrowth'
       ? invoices.filter((i) =>
-          meterPairs(i).some(([prev, cur]) => prev !== null && cur !== null && cur - prev === 0),
-        )
+        meterPairs(i).some(([prev, cur]) => prev !== null && cur !== null && cur - prev === 0),
+      )
       : invoices.filter((i) => meterPairs(i).some(([prev, cur]) => prev === null || cur === null));
 
   /** Чип дарахад шүүлт асна/унтарна — бусад параметр хэвээр */
@@ -296,13 +299,12 @@ export default async function AdminInvoicesPage({
           </div>
 
           <ResultSummary
-            scope={`${formatBillingMonth(month)}-ын ${CATEGORY_LABEL[category].toLowerCase()}${
-              flag === 'nogrowth'
+            scope={`${formatBillingMonth(month)}-ын ${CATEGORY_LABEL[category].toLowerCase()}${flag === 'nogrowth'
                 ? ' · заалт нэмэгдээгүй'
                 : flag === 'missing'
                   ? ' · заалт ороогүй'
                   : ''
-            }`}
+              }`}
             count={visible.length}
           >
             <WarningChip
