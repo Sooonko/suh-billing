@@ -97,7 +97,7 @@ export default async function FlatPage({ params }: { params: Promise<{ flat: str
   }));
 
   // Задаргаа нь бүрэн төлөгдсөн сарыг Ч буцаадаг — өртэйг л харуулна.
-  // 1₮-өөс бага үлдэгдэл нь аравтын бөөрөнхийллийн үр дагавар тул
+  // 50₮-өөс бага үлдэгдлийг төлөх боломжгүй (эргэлтэд байхгүй) тул
   // «0₮ өртэй» гэсэн утгагүй мөр үүсгэхгүй (money.ts-ийг үзнэ үү).
   const debts: DebtRow[] = splitDebtByMonth(invoiceLines, paidByCategory)
     .filter((row) => hasDebt(row.remaining))

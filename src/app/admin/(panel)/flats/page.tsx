@@ -234,7 +234,7 @@ export default async function AdminFlatsPage({
     category ? f.byCategory[category].balance : f.totalBalance;
   const billedOf = (f: FlatBalance) => (category ? f.byCategory[category].billed : f.totalBilled);
 
-  // 1₮-өөс бага зөрүүг тэг гэж үзнэ — money.ts
+  // 50₮-өөс бага зөрүүг тэг гэж үзнэ — money.ts
   if (state === 'debt') flats = flats.filter((f) => hasDebt(balanceOf(f)));
   // ⚠️ «Төлсөн» нь үлдэгдэл 0 гэсэн нөхцөл ДЭЭР нэхэмжилсэн байхыг шаардана.
   // Үүнгүйгээр нэхэмжлэл огт гараагүй айл «төлсөн» гэж гарч, бүх багана 0
