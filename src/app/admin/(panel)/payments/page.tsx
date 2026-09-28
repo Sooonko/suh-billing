@@ -1,4 +1,10 @@
 import { formatBillingMonth, formatMnt } from '@/lib/format';
+import Link from 'next/link';
+import { AddPayment } from '@/components/admin/AddPayment';
+import { PaymentActions } from '@/components/admin/PaymentActions';
+import { ReallocateButton } from '@/components/admin/ReallocateButton';
+import { ReconcileImport } from '@/components/admin/ReconcileImport';
+import { ReparseButton } from '@/components/admin/ReparseButton';
 import { ExcelExportButton } from '@/components/admin/filters/ExcelExportButton';
 import { FilterField, FilterPanel } from '@/components/admin/filters/FilterPanel';
 import { MonthStepper } from '@/components/admin/filters/MonthStepper';
@@ -8,7 +14,7 @@ import { SegmentedNav } from '@/components/admin/filters/SegmentedNav';
 import { WarningChip } from '@/components/admin/filters/WarningChip';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { fetchAllRows } from '@/lib/supabase/fetch-all';
-import { CATEGORIES, CATEGORY_LABEL, type BillCategory } from '@/lib/types';
+import { CATEGORIES, CATEGORY_LABEL, type BankAccount, type BillCategory } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,13 +44,15 @@ const STATUS_LABEL: Record<string, string> = {
 export default async function AdminPaymentsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ category?: string; status?: string; q?: string; month?: string }>;
+  searchParams: Promise<{ category?: string; status?: string; q?: string; month?: string; tab?: string }>;
 }) {
   const params = await searchParams;
+  // Таб нь URL-д — шүүлт, хуудас сэргээхэд алдагдахгүй
+  const tab = params.tab === 'import' ? 'import' : 'list';
   const category = CATEGORY_KEYS.includes(params.category as BillCategory)
     ? (params.category as BillCategory)
     : null;
-  const status = ['MATCHED', 'PARTIAL', 'UNMATCHED'].includes(params.status ?? '')
+  const status = ['MATCHED', 'PARTIAL', 'UNMATCHED', 'IGNORED'].includes(params.status ?? '')
     ? params.status!
     : null;
   const search = params.q?.trim() ?? '';
@@ -56,7 +64,7 @@ export default async function AdminPaymentsPage({
   let query = db
     .from('transactions')
     .select(
-      'id, txn_date, amount, description, source_category, status, parsed_flat_number, allocations(amount, category, flats(flat_number, owner_name))',
+      'id, txn_date, amount, description, source_category, status, parsed_flat_number, allocations(id, amount, category, flats(flat_number, owner_name))',
     )
     .order('txn_date', { ascending: false })
     .limit(1000);
@@ -70,13 +78,28 @@ export default async function AdminPaymentsPage({
     query = query.gte('txn_date', `${month}-01`).lt('txn_date', next);
   }
 
-  const [{ data }, allDates] = await Promise.all([
+  const [{ data }, allDates, { data: accountRows }, { count: unmatchedTotal }, { count: autoFixable }] =
+    await Promise.all([
     query,
     // Сарын сонголт БҮТЭН байх ёстой — дутвал хуучин сар цэснээс алга болно
     fetchAllRows<{ txn_date: string }>((from, to) =>
       db.from('transactions').select('txn_date').range(from, to),
     ),
+    // «Хуулга оруулах» табын бөөн үйлдлүүдэд хэрэгтэй
+    db.from('bank_accounts').select('id, account_number, category, display_name').order('category'),
+    db
+      .from('transactions')
+      .select('id', { count: 'exact', head: true })
+      .is('parsed_flat_number', null)
+      .eq('status', 'UNMATCHED'),
+    db
+      .from('v_transactions_remaining')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'UNMATCHED')
+      .not('parsed_flat_number', 'is', null),
   ]);
+
+  const accounts = (accountRows ?? []) as BankAccount[];
 
   // Гүйлгээ орсон сарууд — шүүлтүүрийн сонголт
   const months = [
@@ -91,7 +114,7 @@ export default async function AdminPaymentsPage({
     source_category: BillCategory;
     status: string;
     parsed_flat_number: number | null;
-    allocations: { amount: number; category: BillCategory; flat: string }[];
+    allocations: { id: string; amount: number; category: BillCategory; flat: string }[];
   };
 
   let rows: Row[] = (data ?? []).map((t) => ({
@@ -103,10 +126,12 @@ export default async function AdminPaymentsPage({
     status: t.status as string,
     parsed_flat_number: t.parsed_flat_number as number | null,
     allocations: ((t.allocations ?? []) as unknown as {
+      id: string;
       amount: number;
       category: BillCategory;
       flats: { flat_number: number; owner_name: string | null } | null;
     }[]).map((a) => ({
+      id: a.id,
       amount: Number(a.amount),
       category: a.category,
       flat: a.flats ? String(a.flats.flat_number) : '—',
@@ -157,13 +182,62 @@ export default async function AdminPaymentsPage({
 
   return (
     <div>
-      <h1 className="mb-1 text-2xl font-bold tracking-tight text-slate-900">
-        Дансны хуулга
-      </h1>
-      <p className="mb-6 text-sm text-slate-500">
-        Банкны хуулгаас орсон гүйлгээ бүр хэнд оногдсон бэ.
+      <h1 className="mb-1 text-2xl font-bold tracking-tight text-slate-900">Баримт</h1>
+      <p className="mb-4 text-sm text-slate-500">
+        Орж ирсэн мөнгө бүр хэнд оногдсон бэ. Мөрөн дээрээ шууд засна.
       </p>
 
+      {/*
+        Харах ба оруулах хоёр өөр ажил. Өмнө нь ХОЁР ТУСДАА ЦЭС байсан:
+        нэг нь сайн шүүлттэй ч үйлдэлгүй, нөгөө нь үйлдэлтэй ч шүүлтгүй.
+        Шинэ хүн хараад ялгааг нь ойлгохгүй байсан тул нэгтгэв.
+      */}
+      <nav className="mb-6 flex gap-1 border-b border-slate-200">
+        {[
+          { key: 'list', label: 'Жагсаалт' },
+          { key: 'import', label: 'Хуулга оруулах' },
+        ].map((item) => (
+          <Link
+            key={item.key}
+            href={`/admin/payments?tab=${item.key}`}
+            aria-current={tab === item.key ? 'page' : undefined}
+            className={`-mb-px border-b-2 px-4 py-2.5 text-sm font-semibold transition ${
+              tab === item.key
+                ? 'border-slate-900 text-slate-900'
+                : 'border-transparent text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            {item.label}
+          </Link>
+        ))}
+      </nav>
+
+      {tab === 'import' && (
+        <div className="space-y-8">
+          <section>
+            <h2 className="mb-1 text-lg font-bold tracking-tight text-slate-900">
+              Банкны хуулга оруулах
+            </h2>
+            <p className="mb-3 text-sm text-slate-500">
+              Excel оруулахад тоотыг автоматаар таньж хуваарилна. Эргэлзээтэйг «Жагсаалт» таб дээр
+              «Хуваарилаагүй» төлвөөр шүүж гараар шийднэ.
+            </p>
+            <ReconcileImport accounts={accounts} />
+          </section>
+
+          <section>
+            <h2 className="mb-1 text-lg font-bold tracking-tight text-slate-900">Бөөн үйлдэл</h2>
+            <p className="mb-3 text-sm text-slate-500">
+              Тоот таних дүрэм сайжирсан, эсвэл хуваарилалт гацсан үед хэрэглэнэ.
+            </p>
+            <ReparseButton count={unmatchedTotal ?? 0} />
+            <ReallocateButton count={autoFixable ?? 0} />
+          </section>
+        </div>
+      )}
+
+      {tab === 'list' && (
+      <>
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Гүйлгээ</p>
@@ -187,8 +261,8 @@ export default async function AdminPaymentsPage({
       <FilterPanel
         action={
           <ExcelExportButton
-            filename={`Хуулга ${month ?? 'бүх хугацаа'}`}
-            sheetName="Хуулга"
+            filename={`Баримт ${month || 'бүх хугацаа'}`}
+            sheetName="Баримт"
             headers={exportHeaders}
             rows={exportRows}
           />
@@ -243,6 +317,10 @@ export default async function AdminPaymentsPage({
         </FilterField>
       </FilterPanel>
 
+      <div className="mb-4 flex justify-end">
+        <AddPayment defaultCategory={category ?? undefined} />
+      </div>
+
       <ResultSummary
         scope={`${month ? formatBillingMonth(month) : 'Бүх хугацаа'} · ${
           category ? CATEGORY_LABEL[category].toLowerCase() : 'бүх данс'
@@ -281,6 +359,7 @@ export default async function AdminPaymentsPage({
                   <th className="px-3 py-2 text-left font-medium">Оногдсон</th>
                   <th className="px-3 py-2 text-left font-medium">Данс</th>
                   <th className="px-3 py-2 text-left font-medium">Төлөв</th>
+                  <th className="px-3 py-2 text-right font-medium">Үйлдэл</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -326,6 +405,23 @@ export default async function AdminPaymentsPage({
                         {STATUS_LABEL[row.status] ?? row.status}
                       </span>
                     </td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right">
+                      <PaymentActions
+                        txn={{
+                          id: row.id,
+                          amount: row.amount,
+                          // Үлдэгдэл = дүн − оногдсон нийлбэр. Оноох маягтын
+                          // анхдагч дүн болно.
+                          remaining:
+                            row.amount - row.allocations.reduce((s, a) => s + a.amount, 0),
+                          status: row.status,
+                          source_category: row.source_category,
+                          parsed_flat_number: row.parsed_flat_number,
+                          description: row.description,
+                          allocationIds: row.allocations.map((a) => a.id),
+                        }}
+                      />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -337,6 +433,8 @@ export default async function AdminPaymentsPage({
             <span className="text-lg font-bold tabular-nums text-slate-900">{formatMnt(total)}</span>
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   );

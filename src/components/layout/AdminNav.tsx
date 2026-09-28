@@ -19,9 +19,11 @@ const ITEMS = [
   { href: '/admin', label: 'Хяналт' },
   { href: '/admin/announcements', label: 'Зарлал' },
   { href: '/admin/flats', label: 'Айлууд' },
-  { href: '/admin/payments', label: 'Төлбөрийн хуулга' },
+  // «Төлбөрийн хуулга» ба «Дансны хуулга» хоёр ижил жагсаалтыг харуулдаг
+  // байсан тул НЭГ болгов — /admin/payments дотор Жагсаалт / Хуулга
+  // оруулах гэсэн таб болов.
+  { href: '/admin/payments', label: 'Баримт' },
   { href: '/admin/invoices', label: 'Нэхэмжлэл' },
-  { href: '/admin/reconcile', label: 'Дансны хуулга' },
   { href: '/admin/tariffs', label: 'Тариф' },
 ] as const;
 

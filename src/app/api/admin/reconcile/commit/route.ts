@@ -1,3 +1,4 @@
+import { revalidateTag } from 'next/cache';
 import { NextResponse } from 'next/server';
 import { buildNameIndex } from '@/lib/matching/parse-flat';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -121,6 +122,8 @@ export async function POST(request: Request) {
     }
   }
 
+  // Шинэ сар шүүлтүүрийн цэсэнд ШУУД гарна — кэш 10 минут хуучрахгүй
+  revalidateTag('transactions');
   return NextResponse.json({
     batchId,
     imported: newTransactions.length,
