@@ -109,7 +109,13 @@ export function PaymentList({ payments }: { payments: PaymentEntry[] }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {rows.map((payment) => (
+                {rows.map((payment) => {
+                  /** Хамгийн их хэсгийг авсан сар — мөрөнд тэрийг л харуулна */
+                  const primary =
+                    payment.covers.length === 0
+                      ? null
+                      : payment.covers.reduce((a, b) => (b.amount > a.amount ? b : a));
+                  return (
                   <tr key={payment.id}>
                     <td className="whitespace-nowrap px-4 py-2.5 text-slate-600">
                       {showDate(payment.date)}
@@ -122,38 +128,41 @@ export function PaymentList({ payments }: { payments: PaymentEntry[] }) {
                       </span>
                     </td>
                     {/*
-                      Хоёр багана МӨР МӨРӨӨР эгнэнэ: нэг төлбөр хоёр сарыг
-                      хассан бол «8 сар / 9 сар» ба «30,000₮ / 50,000₮» нь
-                      хажуу хажуудаа зөв тааран харагдана.
+                      НЭГ ТӨЛБӨР = НЭГ МӨР. Өмнө нь нэг төлбөрийг хассан
+                      сар бүрээр мөр болгож хуваадаг байсан тул «8 сар
+                      480₮ · 9 сар 47,520₮» гэсэн хэлтэрхий гарч, юу болж
+                      байгаа нь ойлгомжгүй болдог байв.
+
+                      Одоо ХАМГИЙН ИХ хэсгийг авсан сарыг л хэлнэ.
+                      Хэлтэрхий нь тоонд хэвээр тооцогдож байгаа —
+                      зөвхөн харагдахгүй.
                     */}
                     <td className="hidden px-3 py-2.5 text-left text-xs text-slate-500 sm:table-cell">
-                      {payment.covers.length === 0 ? (
+                      {primary === null ? (
                         <span className="text-blue-700">илүү төлөлт</span>
                       ) : (
-                        payment.covers.map((c) => (
-                          <span key={c.month} className="block whitespace-nowrap leading-relaxed">
-                            {formatBillingMonth(c.month).replace(/^\d{4} оны /, '')}
-                            {payment.covers.length > 1 && (
-                              <span className="ml-1.5 text-emerald-700">{formatMnt(c.amount)}</span>
-                            )}
-                          </span>
-                        ))
+                        <span className="whitespace-nowrap">
+                          {formatBillingMonth(primary.month).replace(/^\d{4} оны /, '')}
+                          {payment.covers.length > 1 && (
+                            <span
+                              className="ml-1 text-slate-400"
+                              title="Өмнөх сарын үлдэгдэлд ч хэсэг оногдсон"
+                            >
+                              +{payment.covers.length - 1} сар
+                            </span>
+                          )}
+                        </span>
                       )}
                     </td>
                     <td className="hidden px-3 py-2.5 text-right text-xs tabular-nums text-slate-500 sm:table-cell">
-                      {payment.covers.length === 0
-                        ? '—'
-                        : payment.covers.map((c) => (
-                            <span key={c.month} className="block whitespace-nowrap leading-relaxed">
-                              {formatMnt(c.billed)}
-                            </span>
-                          ))}
+                      {primary === null ? '—' : formatMnt(primary.billed)}
                     </td>
                     <td className="whitespace-nowrap px-4 py-2.5 text-right font-semibold tabular-nums text-emerald-700">
                       {formatMnt(payment.amount)}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
 

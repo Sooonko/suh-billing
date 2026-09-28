@@ -194,3 +194,23 @@ console.log(`\n${ok}/${scenarios.length + 1} FIFO тохиолдол зөв`);
   const pass = (cover.get('c1') ?? []).length === 1 && (cover.get('c2') ?? []).length === 0;
   console.log(`  ${pass ? '✅' : '❌'} Илүү төлөлт ямар ч сард наалдахгүй`);
 }
+
+// ── Ирээдүйн сар руу халихгүй ───────────────────────────────────────────
+// 8 сарын 15-нд төлсөн мөнгө 9 сарын нэхэмжлэлийг хааж болохгүй — тэр
+// үед 9 сарын нэхэмжлэл БАЙГААГҮЙ. Хязгаарлахгүй бол дэлгэц дээр
+// «8 сарын 15 · 9 сар 2,874₮» гэсэн утгагүй мөр гардаг.
+{
+  const cover = allocatePaymentsToMonths(
+    [
+      { month: '2026-08', category: W, billed: 59_126 },
+      { month: '2026-09', category: W, billed: 72_957 },
+    ],
+    [{ id: 'aug', category: W, date: '2026-08-15T00:00:00Z', amount: 62_000 }],
+  );
+  const c = cover.get('aug') ?? [];
+  const pass = c.length === 1 && c[0].month === '2026-08';
+  console.log(
+    `  ${pass ? '✅' : '❌'} 8 сард төлсөн мөнгө 9 сарыг хаахгүй` +
+      (pass ? '' : ` (гарсан: ${c.map((x) => x.month).join(', ')})`),
+  );
+}
