@@ -27,11 +27,21 @@ export function ResidentDashboard({ data }: { data: ResidentDashboardData }) {
   const activeState = byCategory.get(active);
   const activeMeta = CATEGORIES.find((c) => c.key === active)!;
 
-  // Нийт дүн = 3 ангиллын үлдэгдлийн нийлбэр.
-  // Илүү төлөлт сөрөг тул аяндаа хасагдаж, жинхэнэ төлөх дүн гарна.
-  // 50₮-өөс бага үлдэгдэл нь аравтын бөөрөнхийллийн үлдэц — оршин суугч
-  // түүнийг шилжүүлэх боломжгүй тул нийт дүнд оруулахгүй (money.ts)
-  const total = data.categories.reduce((sum, c) => sum + settledBalance(Number(c.balance)), 0);
+  /**
+   * Нийт төлөх дүн — ЗӨВХӨН өртэй ангиллуудын нийлбэр.
+   *
+   * ⚠️ ИЛҮҮ ТӨЛӨЛТИЙГ ХАСАХГҮЙ. Ангилал бүр ӨӨР ДАНСТАЙ тул оршин суугч
+   * цахилгааны илүү төлөлтөөрөө ус дулааны өрөө хаах боломжгүй. Өмнө нь
+   * хасдаг байсан тул 107 тоот «40,150₮ ус дулаанд өртэй, 38,574₮
+   * цахилгаанд илүү» байхад «нийт төлөх 1,576₮» гэж худал харуулсан —
+   * тэр хүн 40,150₮ шилжүүлэх ёстой.
+   *
+   * 50₮-өөс бага үлдэгдэл нь аравтын бөөрөнхийллийн үлдэц (money.ts).
+   */
+  const balances = data.categories.map((c) => settledBalance(Number(c.balance)));
+  const total = balances.reduce((sum, b) => (b > 0 ? sum + b : sum), 0);
+  /** Илүү төлөлт ТУСАД НЬ — дараагийн сард зарцуулагдана */
+  const overpaid = balances.reduce((sum, b) => (b < 0 ? sum - b : sum), 0);
 
   /** Үлдэгдлийн тэмдгээс хамаарсан өнгө — нэг эх сурвалжаас удирдана */
   const tone = (value: number) =>
@@ -65,13 +75,27 @@ export function ResidentDashboard({ data }: { data: ResidentDashboardData }) {
       >
         <div className="px-5 pb-4 pt-5 md:flex-1 md:px-7 md:py-7">
           <p className="text-sm font-medium text-slate-500 md:text-base">
-            {total > 0 ? 'Нийт төлөх дүн' : total < 0 ? 'Нийт илүү төлсөн' : 'Төлбөрийн үлдэгдэл'}
+            {total > 0 ? 'Нийт төлөх дүн' : overpaid > 0 ? 'Нийт илүү төлсөн' : 'Төлбөрийн үлдэгдэл'}
           </p>
-          <p className={`mt-1 text-4xl font-bold tabular-nums tracking-tight md:text-5xl ${tone(total)}`}>
-            {formatMnt(total)}
+          <p
+            className={`mt-1 text-4xl font-bold tabular-nums tracking-tight md:text-5xl ${
+              total > 0 ? 'text-red-700' : overpaid > 0 ? 'text-blue-700' : 'text-emerald-700'
+            }`}
+          >
+            {formatMnt(total > 0 ? total : overpaid)}
           </p>
-          {total === 0 && (
+          {total === 0 && overpaid === 0 && (
             <p className="mt-1 text-sm text-emerald-700 md:text-base">Бүх төлбөр цэвэр байна 🎉</p>
+          )}
+          {/*
+            Өртэй БА илүү төлсөн зэрэг байж болно — данс тусдаа учраас.
+            Илүүг нь дурдахгүй бол «би илүү төлсөн шүү дээ» гэж эргэлзэнэ.
+          */}
+          {total > 0 && overpaid > 0 && (
+            <p className="mt-1.5 text-sm text-blue-700 md:text-base">
+              Өөр ангилалд {formatMnt(overpaid)} илүү төлсөн байна — дараагийн сард
+              тооцогдоно.
+            </p>
           )}
         </div>
 
