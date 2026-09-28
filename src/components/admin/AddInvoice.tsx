@@ -31,13 +31,28 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-export function AddInvoice({ category, month }: { category: BillCategory; month: string }) {
+export function AddInvoice({
+  category,
+  month: defaultMonth,
+}: {
+  category: BillCategory;
+  /** Шүүлтүүрийн сар — маягтын анхдагч утга болно */
+  month: string;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
 
+  /**
+   * Сарыг маягт дотроо ЗАСАЖ болно.
+   *
+   * ЯАГААД: шүүлтүүрийн сарын цэс нь нэхэмжлэл АЛЬ ХЭДИЙН байгаа
+   * саруудыг л харуулдаг. Тиймээс 6, 7 сар шиг огт нэхэмжлэлгүй сард
+   * мөр нэмэх гарц байхгүй байв — тэр сар цэсэнд гарч ирдэггүй.
+   */
+  const [month, setMonth] = useState(defaultMonth);
   const [flatNumber, setFlatNumber] = useState('');
   const [values, setValues] = useState<Record<string, string>>({});
   const [note, setNote] = useState('');
@@ -51,6 +66,9 @@ export function AddInvoice({ category, month }: { category: BillCategory; month:
     setFlatNumber('');
     setValues({});
     setNote('');
+    // Сарыг шүүлтүүрийн утга руу нь буцаана — дараагийн нэмэлт нь
+    // тэр сараас эхлэх нь хамгийн түгээмэл хэрэгцээ
+    setMonth(defaultMonth);
   }
 
   async function submit(event: React.FormEvent) {
@@ -60,6 +78,12 @@ export function AddInvoice({ category, month }: { category: BillCategory; month:
     setDone(null);
 
     const num = (key: string) => (values[key] === undefined || values[key] === '' ? 0 : Number(values[key]));
+
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+      setError('Сарыг зөв сонгоно уу');
+      setBusy(false);
+      return;
+    }
 
     const response = await fetch('/api/admin/invoices', {
       method: 'POST',
@@ -104,8 +128,7 @@ export function AddInvoice({ category, month }: { category: BillCategory; month:
             setOpen(true);
             setDone(null);
           }}
-          disabled={!month}
-          title={month ? undefined : 'Эхлээд сар сонгоно уу'}
+
           className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
         >
           <span aria-hidden className="text-base leading-none">＋</span>
@@ -123,7 +146,7 @@ export function AddInvoice({ category, month }: { category: BillCategory; month:
     >
       <div className="mb-3 flex items-baseline justify-between gap-3">
         <p className="text-sm font-bold text-slate-900">
-          {CATEGORY_LABEL[category]} · {formatBillingMonth(month)} — нэхэмжлэл нэмэх
+          {CATEGORY_LABEL[category]} — нэхэмжлэл нэмэх
         </p>
         <button
           type="button"
@@ -134,7 +157,17 @@ export function AddInvoice({ category, month }: { category: BillCategory; month:
         </button>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+        <Field label="Сар">
+          <input
+            required
+            type="month"
+            value={month}
+            onChange={(e) => setMonth(e.target.value)}
+            className={INPUT}
+          />
+        </Field>
+
         <Field label="Тоот">
           <input
             required
