@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { buildNameIndex } from '@/lib/matching/parse-flat';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { requireAdmin } from '@/lib/supabase/server';
+import { findExistingHashes } from '@/lib/matching/find-duplicates';
 import { parseStatement, type RawRow } from '@/lib/matching/parse-statement';
 import type { BillCategory } from '@/lib/types';
 
@@ -55,9 +56,33 @@ export async function POST(request: Request) {
     })),
   );
 
-  const { transactions } = await parseStatement(rows, new Set(flatIdByNumber.keys()), nameIndex);
-  if (!transactions.length) {
+  const { transactions: parsed } = await parseStatement(rows, new Set(flatIdByNumber.keys()), nameIndex);
+  if (!parsed.length) {
     return NextResponse.json({ error: 'Бүртгэх орлогын гүйлгээ олдсонгүй' }, { status: 400 });
+  }
+
+  /**
+   * Аль хэдийн орсон гүйлгээг ЭНД шүүнэ.
+   *
+   * ЯАГААД upsert-ийн ignoreDuplicates хангалтгүй вэ: тэр нь зөвхөн
+   * dedupe_hash дээрх UNIQUE индексээр ажилладаг. Нэг хуулгыг өөр цагийн
+   * бүстэй орчноос оруулбал hash өөр гарч, индекс мэдэхгүй өнгөрөөж,
+   * ижил төлбөр ХОЁР УДАА бүртгэгдэнэ. find-duplicates нь огнооноос
+   * хамаарахгүй шалгуураар тэрийг барина.
+   */
+  const alreadyImported = await findExistingHashes(db, parsed);
+  const transactions = parsed.filter((t) => !alreadyImported.has(t.dedupeHash));
+  const skippedAsDuplicate = parsed.length - transactions.length;
+
+  if (!transactions.length) {
+    return NextResponse.json({
+      batchId: null,
+      imported: 0,
+      duplicatesSkipped: skippedAsDuplicate,
+      autoMatched: 0,
+      needsReview: 0,
+      message: `Бүх ${skippedAsDuplicate} гүйлгээ аль хэдийн бүртгэгдсэн байна — шинээр орох зүйл алга.`,
+    });
   }
 
   const batchId = crypto.randomUUID();
@@ -127,7 +152,8 @@ export async function POST(request: Request) {
   return NextResponse.json({
     batchId,
     imported: newTransactions.length,
-    duplicatesSkipped: transactions.length - newTransactions.length,
+    // Урьдчилж шүүсэн + UNIQUE индекс барьсан — хоёуланг нэг тоонд нэгтгэнэ
+    duplicatesSkipped: skippedAsDuplicate + (transactions.length - newTransactions.length),
     autoMatched: allocations.length,
     needsReview: newTransactions.length - allocations.length,
   });

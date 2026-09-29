@@ -68,6 +68,15 @@ export function parseAmount(value: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+/**
+ * Бүсгүй огноо-цаг: "2026-09-28T10:45:22" · "2026-09-28 10:45:22"
+ *
+ * Банкны хуулга цагийн бүс БИЧДЭГГҮЙ. `new Date("2026-09-28T10:45:22")` нь
+ * ийм утгыг СЕРВЕРИЙН орон нутгийн цагаар уншдаг тул ЯГ ижил файл хаана
+ * ажиллаж байгаагаас хамаараад өөр үр дүн өгнө.
+ */
+const RE_NAIVE_DATETIME = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?(\.\d+)?$/;
+
 /** "2026-08-01T12:07:03" эсвэл Excel-ийн серийн дугаар → ISO огноо */
 export function parseDate(value: unknown): string | null {
   if (value instanceof Date) return value.toISOString();
@@ -78,7 +87,24 @@ export function parseDate(value: unknown): string | null {
     return Number.isNaN(d.getTime()) ? null : d.toISOString();
   }
   if (typeof value !== 'string') return null;
-  const d = new Date(value.trim());
+
+  const raw = value.trim();
+
+  /**
+   * ⚠️ Бүсгүй огноо-цагийг ЗААВАЛ UTC гэж үзнэ.
+   *
+   * ЯАГААД: өмнө нь серверийн бүсээр уншдаг байсан тул нэг хуулгыг компьютер
+   * дээрээс (UTC+8) нэг удаа, Vercel дээрээс (UTC) нэг удаа оруулахад ӨӨР
+   * dedupe_hash гарч, давхардлын хамгаалалт ЧИМЭЭГҮЙ нурж байв — 9/28-ны
+   * 5 гүйлгээ хоёр дахь удаагаа «шинэ» гэж харагдсан.
+   *
+   * UTC сонгосон шалтгаан: хуулга дээр бичигдсэн ХУАНЛИЙН ӨДӨР хэвээр
+   * үлдэнэ. Орон нутгийн бүсээр уншвал шөнө дүлийн гүйлгээ өмнөх өдөр
+   * рүү шилжиж, оршин суугчийн харах огноо хуулгатайгаа зөрөх байсан.
+   */
+  const normalized = RE_NAIVE_DATETIME.test(raw) ? `${raw.replace(' ', 'T')}Z` : raw;
+
+  const d = new Date(normalized);
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 

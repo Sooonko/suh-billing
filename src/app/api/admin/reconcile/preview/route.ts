@@ -3,6 +3,7 @@ import { buildNameIndex } from '@/lib/matching/parse-flat';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { requireAdmin } from '@/lib/supabase/server';
 import { detectCategoryHint } from '@/lib/matching/detect-category';
+import { findExistingHashes } from '@/lib/matching/find-duplicates';
 import { parseStatement, type RawRow } from '@/lib/matching/parse-statement';
 import type { BillCategory } from '@/lib/types';
 
@@ -77,16 +78,10 @@ export async function POST(request: Request) {
     );
   }
 
-  // 4. Аль хэдийн оруулсан гүйлгээг илрүүлнэ (нэг файлыг 2 удаа оруулах эрсдэл)
-  const hashes = transactions.map((t) => t.dedupeHash);
-  const existing = new Set<string>();
-  for (let i = 0; i < hashes.length; i += 500) {
-    const { data } = await db
-      .from('transactions')
-      .select('dedupe_hash')
-      .in('dedupe_hash', hashes.slice(i, i + 500));
-    data?.forEach((r) => existing.add(r.dedupe_hash));
-  }
+  // 4. Аль хэдийн оруулсан гүйлгээг илрүүлнэ (нэг файлыг 2 удаа оруулах эрсдэл).
+  //    Hash-аас гадна цагийн бүсээс хамаарахгүй шалгуур ажиллана — дэлгэрэнгүйг
+  //    find-duplicates.ts дотор.
+  const existing = await findExistingHashes(db, transactions);
 
   // 5. Таарсан айлуудын одоогийн үлдэгдэл — илүү төлөлтийг урьдчилж анхааруулна
   const matchedFlatIds = [...new Set(transactions.filter((t) => t.flatNumber).map((t) => flatIdByNumber.get(t.flatNumber!)!))];

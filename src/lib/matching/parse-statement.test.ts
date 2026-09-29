@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { dedupeHash, detectColumns, parseStatement } from './parse-statement';
+import { dedupeHash, detectColumns, parseDate, parseStatement } from './parse-statement';
 
 /**
  * Банкны хуулгын задлагчийн тест — гол асуулт: ЗАРЛАГА ялгарч байна уу?
@@ -88,7 +88,7 @@ async function main() {
   console.log(`\n${results.filter(Boolean).length}/${results.length} тохиолдол зөв`);
 }
 
-main().then(dedupeChecks);
+main();
 
 /**
  * ── Давхардлын хамгаалалт ─────────────────────────────────────────────────
@@ -122,3 +122,53 @@ async function dedupeChecks() {
   }
   console.log(`\n${ok}/${cases.length} давхардлын тохиолдол зөв`);
 }
+
+/**
+ * ── Цагийн бүсээс хамаарах эсэх ───────────────────────────────────────────
+ *
+ * Банкны хуулга цагийн бүс БИЧДЭГГҮЙ: "2026-09-28T10:45:22". Урьд нь
+ * `new Date(...)` нь үүнийг СЕРВЕРИЙН бүсээр уншдаг байсан тул ижил файл
+ * компьютер (UTC+8) болон Vercel (UTC) дээр ӨӨР dedupe_hash өгч, давхардлын
+ * хамгаалалт чимээгүй нурж байв — 9/28-ны 5 төлбөр дахин «шинэ» гэж
+ * харагдаж, илүү төлөлт мэт анхааруулга өгсөн.
+ *
+ * Энэ тест бүсийг сольж ажиллуулж байгаа тул үр дүн ЯГ ижил гарах ёстой.
+ */
+async function timezoneChecks() {
+  const ZONES = ['UTC', 'Asia/Ulaanbaatar', 'America/New_York', 'Pacific/Kiritimati'];
+  const SAMPLES = [
+    '2026-09-28T10:45:22',   // бүсгүй огноо-цаг — гол тохиолдол
+    '2026-09-28 10:45:22',   // зай тусгаарлагчтай хувилбар
+    '2026-09-01',            // зөвхөн огноо
+    '2026-09-28T23:50:00',   // шөнө дүл — бүс шилжвэл ӨДӨР нь өөрчлөгдөнө
+  ];
+
+  const original = process.env.TZ;
+  const results: string[][] = [];
+  for (const tz of ZONES) {
+    process.env.TZ = tz;
+    results.push(SAMPLES.map((s) => parseDate(s) ?? 'null'));
+  }
+  if (original === undefined) delete process.env.TZ;
+  else process.env.TZ = original;
+
+  console.log('\nЦагийн бүсээс хамаарахгүй эсэх:');
+  let ok = 0;
+  SAMPLES.forEach((sample, i) => {
+    const values = new Set(results.map((r) => r[i]));
+    const pass = values.size === 1;
+    if (pass) ok++;
+    console.log(
+      `  ${pass ? '✅' : '❌'} ${sample.padEnd(22)} → ${pass ? results[0][i] : [...values].join(' ≠ ')}`,
+    );
+  });
+
+  // Огноо нь хуулга дээр БИЧИГДСЭН хуанлийн өдрөө хадгалах ёстой
+  const dayKept = parseDate('2026-09-28T23:50:00')?.slice(0, 10) === '2026-09-28';
+  if (dayKept) ok++;
+  console.log(`  ${dayKept ? '✅' : '❌'} шөнө дүлийн гүйлгээ хуанлийн өдрөө хадгална`);
+
+  console.log(`\n${ok}/${SAMPLES.length + 1} цагийн бүсийн тохиолдол зөв`);
+}
+
+dedupeChecks().then(timezoneChecks);
