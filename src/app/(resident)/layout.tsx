@@ -21,7 +21,7 @@ export default function ResidentLayout({ children }: { children: React.ReactNode
             aria-hidden
             className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-slate-900 text-sm font-bold text-white md:h-10 md:w-10"
           >
-            СӨХ
+            P-A
           </span>
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold leading-tight text-slate-900 md:text-base">
