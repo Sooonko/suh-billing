@@ -19,15 +19,27 @@ export const SOH = {
     email: null as string | null,
 
     /**
-     * Оршин суугчдын Messenger группын холбоос.
+     * Facebook групп — байрны ерөнхий мэдээлэл, зарлал.
      *
-     * Жишээ: 'https://m.me/j/AbCdEfGhIj/'  эсвэл
-     *        'https://www.facebook.com/groups/1234567890'
-     *
-     * null бол Холбоо барих дэлгэцэд ТУХАЙН ХЭСЭГ ОГТ ГАРАХГҮЙ — хоосон
-     * товч харуулж оршин суугчийг төөрөлдүүлэхгүйн тулд.
+     * null бол Холбоо барих дэлгэцэд гарахгүй — хоосон товч харуулж
+     * оршин суугчийг төөрөлдүүлэхгүйн тулд.
      */
-    messengerGroup: null as string | null,
+    facebookGroup: 'https://www.facebook.com/share/g/19JSNn9nyc/' as string | null,
+
+    /**
+     * Орц тус бүрийн Messenger чат.
+     *
+     * ЯАГААД орцоор нь салгав: сантехник, цэвэрлэгээ, хаалганы код зэрэг
+     * асуудал ИХЭВЧЛЭН нэг орцны хэрэг. Нийтийн группэд бичвэл нөгөө
+     * орцынхонд хамаагүй мэдээлэл болно.
+     *
+     * Холбоо барих дэлгэц тухайн хүний тоотыг МЭДЭХГҮЙ (ерөнхий хуудас)
+     * тул хоёуланг нь зэрэг харуулж, хүн өөрөө сонгоно.
+     */
+    entranceChats: [
+      { entrance: 1, url: 'https://m.me/j/AbbxR2NbsG-2337u/?send_source=gc:copy_invite_link_c' },
+      { entrance: 2, url: 'https://m.me/j/AbZuX1PTns6Agktz/?send_source=gc:copy_invite_link_c' },
+    ] as ReadonlyArray<{ entrance: number; url: string }>,
   },
 
   /** Оршин суугчид гүйлгээ хийхэд заавал мэдэх дүрэм */
