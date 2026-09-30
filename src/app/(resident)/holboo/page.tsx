@@ -8,7 +8,7 @@ import { SOH } from '@/lib/soh-config';
  * солигдоход нэг файл засаад л боллоо.
  */
 export default function ContactPage() {
-  const { phone, hours, address, email } = SOH.contact;
+  const { phone, hours, address, email, messengerGroup } = SOH.contact;
   /** tel: холбоос — зураас, зайг хасна */
   const telHref = `tel:${phone.replace(/[^\d+]/g, '')}`;
 
@@ -18,10 +18,17 @@ export default function ContactPage() {
 
       <div className="md:grid md:grid-cols-2 md:items-start md:gap-6">
 
+      {/*
+        Зүүн багана: шууд холбогдох сувгууд.
+        Утас ба Messenger-ийг ХАМТ байрлуулав — хоёулаа «одоо холбогдох»
+        үйлдэл тул нэг дор байх нь ойлгомжтой.
+      */}
+      <div className="mb-4 space-y-3 md:mb-0">
+
       {/* Утас — гар утаснаас дархад шууд залгана */}
       <a
         href={telHref}
-        className="mb-4 flex items-center gap-4 rounded-2xl bg-slate-900 p-5 text-white shadow-sm transition hover:bg-slate-800 active:scale-[0.99] md:mb-0 md:p-6"
+        className="flex items-center gap-4 rounded-2xl bg-slate-900 p-5 text-white shadow-sm transition hover:bg-slate-800 active:scale-[0.99] md:p-6"
       >
         <span aria-hidden className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-white/10">
           <svg
@@ -42,6 +49,38 @@ export default function ContactPage() {
         </div>
         <span aria-hidden className="text-slate-400">→</span>
       </a>
+
+      {/*
+        Messenger групп — зөвхөн холбоос тохируулсан үед.
+        Шинэ таб руу нээнэ: оршин суугч аппаас гарч яваад буцаж чадахгүй
+        болохоос сэргийлнэ. rel нь нээгдсэн хуудсанд манай таб руу хандах
+        эрх өгөхгүй.
+      */}
+      {messengerGroup && (
+        <a
+          href={messengerGroup}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 active:scale-[0.99] md:p-6"
+        >
+          <span
+            aria-hidden
+            className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[#0084FF]/10 text-[#0084FF]"
+          >
+            <svg viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6">
+              <path d="M12 2C6.5 2 2 6.1 2 11.2c0 2.9 1.4 5.5 3.7 7.2V22l3.4-1.9c.9.3 1.9.4 2.9.4 5.5 0 10-4.1 10-9.2S17.5 2 12 2Zm1 12.1-2.5-2.7-4.9 2.7 5.4-5.7 2.6 2.7 4.8-2.7-5.4 5.7Z" />
+            </svg>
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs text-slate-400">Messenger групп</p>
+            <p className="text-base font-bold text-slate-900">Оршин суугчдын чат</p>
+            <p className="mt-0.5 text-xs text-slate-500">Зарлал, хамтын асуудал</p>
+          </div>
+          <span aria-hidden className="text-slate-400">→</span>
+        </a>
+      )}
+
+      </div>
 
       <dl className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="px-5 py-4">
