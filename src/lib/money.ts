@@ -45,3 +45,22 @@ export function hasOverpaid(balance: number): boolean {
 export function settledBalance(balance: number): number {
   return isSettled(balance) ? 0 : balance;
 }
+
+/**
+ * Төлбөр өрөөс хэр ИЛҮҮ гарсан бэ. Хүлцэлд багтвал `null`.
+ *
+ * ЯАГААД ТУСАД НЬ ГАРГАВ: хуулга оруулахад «Илүү төлөлт: 0₮» гэсэн утгагүй
+ * анхааруулга гарч байв — 0 гэдэг нь илүү төлөлт БИШ гэсэн үг. Шалтгаан нь
+ * `payment > balance` гэж шалгасанд байв: нэхэмжлэл 2 аравтын оронтой,
+ * банк бүхэл төгрөгөөр хөдөлдөг тул айл ЯГ бүтэн төлсөн ч 0.33₮ зэрэг
+ * үлдэц гарч, түүнийг илүү төлөлт гэж тооцдог байсан.
+ *
+ * `null` буцаах нь «анхааруулах шаардлагагүй» гэсэн утга — дуудаж байгаа
+ * тал хүлцлийн хилийг дахин бодох шаардлагагүй.
+ */
+export function overpayOf(payment: number, balance: number): number | null {
+  // Айл аль хэдийн илүү төлсөн (үлдэгдэл сөрөг) бол шинэ төлбөр БҮТНЭЭРЭЭ
+  // илүү — тиймээс сөрөг үлдэгдлийг тэг гэж үзнэ.
+  const excess = payment - Math.max(balance, 0);
+  return excess >= SETTLED_EPSILON ? Number(excess.toFixed(2)) : null;
+}

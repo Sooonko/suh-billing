@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { requireAdmin } from '@/lib/supabase/server';
 import { detectCategoryHint } from '@/lib/matching/detect-category';
 import { findExistingHashes } from '@/lib/matching/find-duplicates';
+import { overpayOf } from '@/lib/money';
 import { parseStatement, type RawRow } from '@/lib/matching/parse-statement';
 import type { BillCategory } from '@/lib/types';
 
@@ -109,7 +110,18 @@ export async function POST(request: Request) {
 
     // Төлсөн дүн нь өрөөс их → илүү төлөлт эсвэл өөр ангилалд хамаарах төлбөр.
     // Автоматаар хуваахгүй — админд мэдэгдээд өөрөө шийднэ.
-    const overpay = balance !== null && !isDuplicate && t.amount > balance;
+    const excess = balance === null ? null : overpayOf(t.amount, balance);
+
+    /**
+     * ⚠️ 50₮-ын хүлцэл ЗААВАЛ хэрэглэнэ (money.ts).
+     *
+     * Нэхэмжлэл 2 аравтын оронтой бодогддог, банк бүхэл төгрөгөөр хөдөлдөг
+     * тул айл ЯГ бүтэн төлсөн ч хагас төгрөгийн үлдэц гардаг. Урьд нь
+     * `t.amount > balance` гэж шалгаж байсан тул 0.33₮ зөрүү ч анхааруулга
+     * өдөөж, дэлгэц дээр «Илүү төлөлт: 0₮» гэсэн утгагүй мөр гарч байв —
+     * 0 гэдэг нь илүү төлөлт БИШ гэсэн үг.
+     */
+    const overpay = excess !== null && !isDuplicate;
 
     // ⚠️ Нэг айл ЭНЭ хуулгад олон удаа төлсөн бол дараагийн мөр нь аль хэдийн
     // багассан үлдэгдэлтэй тулгалдах ёстой. Эс бөгөөс хоёр дахь төлбөр нь
@@ -123,7 +135,7 @@ export async function POST(request: Request) {
       flatId,
       isDuplicate,
       currentBalance: balance,
-      overpayAmount: overpay ? Number((t.amount - Math.max(balance, 0)).toFixed(2)) : null,
+      overpayAmount: overpay ? excess : null,
       needsAdminDecision: overpay,
       /** Энэ айл энэ хуулгад хэдэн удаа төлсөн бэ (1 бол хэвийн) */
       paymentsForFlat: t.flatNumber ? (paymentsPerFlat.get(t.flatNumber) ?? 1) : 1,
