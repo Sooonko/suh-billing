@@ -2,6 +2,8 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { useConfirm } from '@/components/ui/Feedback';
+import { callApi } from '@/lib/api-client';
 import { formatMnt } from '@/lib/format';
 import { readSheetRows } from '@/lib/read-sheet';
 import { CATEGORY_LABEL, type BankAccount, type BillCategory } from '@/lib/types';
@@ -65,6 +67,7 @@ interface CommitResult {
 
 export function ReconcileImport({ accounts }: { accounts: BankAccount[] }) {
   const router = useRouter();
+  const confirm = useConfirm();
   const [bankAccountId, setBankAccountId] = useState(accounts[0]?.id ?? '');
   const [fileName, setFileName] = useState<string | null>(null);
   const [rows, setRows] = useState<Record<string, unknown>[] | null>(null);
@@ -107,22 +110,20 @@ export function ReconcileImport({ accounts }: { accounts: BankAccount[] }) {
     setBusy(step);
     setError(null);
 
-    const response = await fetch(`/api/admin/reconcile/${step}`, {
+    const result = await callApi<Preview | CommitResult>(`/api/admin/reconcile/${step}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bankAccountId, rows, headerRow }),
+      json: { bankAccountId, rows, headerRow },
     });
-    const data = await response.json();
     setBusy(null);
 
-    if (!response.ok) {
-      setError(data.error ?? 'Алдаа гарлаа');
+    if (!result.ok) {
+      setError(result.error);
       return;
     }
 
-    if (step === 'preview') setPreview(data as Preview);
+    if (step === 'preview') setPreview(result.data as Preview);
     else {
-      setResult(data as CommitResult);
+      setResult(result.data as CommitResult);
       setPreview(null);
       // Гар шалгалтын жагсаалт шинэчлэгдэхийн тулд
       router.refresh();
@@ -426,17 +427,19 @@ export function ReconcileImport({ accounts }: { accounts: BankAccount[] }) {
             <div className="flex flex-wrap gap-3">
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   // Данс нь мөнгө хаашаа орохыг шийддэг тул ЗААВАЛ баталгаажуулна
-                  if (
-                    !confirm(
-                      `«${preview.account.displayName}» данс руу ${newRows} гүйлгээ бүртгэх үү?\n\n` +
-                      'Буруу данс сонгосон бол төлбөр буруу ангилалд орно.',
-                    )
-                  ) {
-                    return;
-                  }
-                  send('commit');
+                  const ok = await confirm({
+                    title: 'Гүйлгээ бүртгэх үү?',
+                    details: [
+                      ['Данс', preview.account.displayName],
+                      ['Шинэ гүйлгээ', String(newRows)],
+                    ],
+                    warning: 'Буруу данс сонгосон бол төлбөр буруу ангилалд орно.',
+                    confirmLabel: 'Бүртгэх',
+                    tone: 'success',
+                  });
+                  if (ok) send('commit');
                 }}
                 disabled={busy !== null || newRows === 0}
                 className="rounded-lg bg-emerald-600 px-8 py-3 font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-50"

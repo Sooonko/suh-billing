@@ -1,5 +1,6 @@
 import { BottomNav } from '@/components/layout/BottomNav';
 import { TopNav } from '@/components/layout/TopNav';
+import { loadAnnouncements } from '@/lib/announcements';
 import { SOH } from '@/lib/soh-config';
 
 /**
@@ -12,7 +13,10 @@ import { SOH } from '@/lib/soh-config';
  * Агуулгад pb-24 өгсөн нь доод цэс контентыг дарахгүйн тулд. Веб дээр доод
  * цэс байхгүй тул md:pb-12 болж багасна.
  */
-export default function ResidentLayout({ children }: { children: React.ReactNode }) {
+export default async function ResidentLayout({ children }: { children: React.ReactNode }) {
+  // Цэсний «Мэдээ» дээрх уншаагүйн тэмдэгт — зөвхөн id, огноо (кэшээс)
+  const newsStamps = (await loadAnnouncements()).map(({ id, published_at }) => ({ id, published_at }));
+
   return (
     <div className="flex min-h-dvh flex-col">
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur">
@@ -32,7 +36,7 @@ export default function ResidentLayout({ children }: { children: React.ReactNode
 
           {/* Веб дээрх хэвтээ цэс — баруун зах руу түлхэнэ */}
           <div className="ml-auto">
-            <TopNav />
+            <TopNav newsStamps={newsStamps} />
           </div>
         </div>
       </header>
@@ -41,7 +45,7 @@ export default function ResidentLayout({ children }: { children: React.ReactNode
         {children}
       </main>
 
-      <BottomNav />
+      <BottomNav newsStamps={newsStamps} />
     </div>
   );
 }

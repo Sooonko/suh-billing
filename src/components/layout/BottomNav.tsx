@@ -2,7 +2,9 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import type { NewsStamp } from '@/lib/news-seen';
 import { NAV_ITEMS, NavIcon, isNavActive } from './nav-items';
+import { NewsBadge } from './NewsBadge';
 
 /**
  * Доод талын цэс — ЗӨВХӨН гар утсан дээр (md-ээс доош).
@@ -10,7 +12,7 @@ import { NAV_ITEMS, NavIcon, isNavActive } from './nav-items';
  * Хэрэглэгчийн ~60% гар утаснаас ханддаг тул цэсийг доод талд, хуруу хүрэхэд
  * хялбар өндөртэй тавьсан. Веб дээр толгойн цэс (TopNav) орлоно.
  */
-export function BottomNav() {
+export function BottomNav({ newsStamps }: { newsStamps: NewsStamp[] }) {
   const pathname = usePathname();
 
   return (
@@ -37,8 +39,9 @@ export function BottomNav() {
                       : 'text-slate-400 hover:text-slate-600'
                 }`}
               >
-                <span className="[&>svg]:h-6 [&>svg]:w-6">
+                <span className="relative inline-flex [&>svg]:h-6 [&>svg]:w-6">
                   <NavIcon d={icon} active={active} />
+                  {href === '/' && <NewsBadge stamps={newsStamps} className="absolute -right-2 -top-1" />}
                 </span>
                 {label}
               </Link>

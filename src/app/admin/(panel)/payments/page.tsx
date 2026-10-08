@@ -1,5 +1,6 @@
-import { formatBillingMonth, formatMnt } from '@/lib/format';
+import { unstable_cache } from 'next/cache';
 import Link from 'next/link';
+import { formatBillingMonth, formatMnt } from '@/lib/format';
 import { AddPayment } from '@/components/admin/AddPayment';
 import { PaymentActions } from '@/components/admin/PaymentActions';
 import { ReallocateButton } from '@/components/admin/ReallocateButton';
@@ -8,31 +9,52 @@ import { ReparseButton } from '@/components/admin/ReparseButton';
 import { ExcelExportButton } from '@/components/admin/filters/ExcelExportButton';
 import { FilterField, FilterPanel } from '@/components/admin/filters/FilterPanel';
 import { MonthStepper } from '@/components/admin/filters/MonthStepper';
+import { Pagination } from '@/components/admin/filters/Pagination';
 import { ResultSummary } from '@/components/admin/filters/ResultSummary';
 import { SearchBox } from '@/components/admin/filters/SearchBox';
 import { SegmentedNav } from '@/components/admin/filters/SegmentedNav';
 import { WarningChip } from '@/components/admin/filters/WarningChip';
+import {
+  loadPaymentIndex,
+  loadPaymentRows,
+  parsePaymentFilters,
+  STATUS_LABEL,
+} from '@/lib/admin/payments-query';
+import { DEFAULT_PAGE_SIZE, pageInfo, parsePaging } from '@/lib/pagination';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { matchesSearch } from '@/lib/search-flat';
 import { fetchAllRows } from '@/lib/supabase/fetch-all';
-import { CATEGORIES, CATEGORY_LABEL, type BankAccount, type BillCategory } from '@/lib/types';
+import { CATEGORIES, CATEGORY_LABEL, type BankAccount } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
-const CATEGORY_KEYS = CATEGORIES.map((c) => c.key);
+/**
+ * Гүйлгээ орсон сарууд — сарын сонголтод.
+ *
+ * ЯАГААД КЭШЛЭВ: өмнө нь хуудас нээгдэх БҮРТ бүх гүйлгээний огноог
+ * (мянга мянган мөр) татдаг байв — хуудас удаан байсан гол шалтгааны
+ * нэг. Шинэ гүйлгээ орох үед (`/api/admin/payments`, хуулга импорт)
+ * `revalidateTag('transactions')` дуудагдаж кэш шинэчлэгдэнэ.
+ */
+const loadTxnMonths = unstable_cache(
+  async () => {
+    const db = createAdminClient();
+    const rows = await fetchAllRows<{ txn_date: string }>((from, to) =>
+      db.from('transactions').select('txn_date').order('id').range(from, to),
+    );
+    return [...new Set(rows.map((r) => String(r.txn_date).slice(0, 7)))].sort((a, b) =>
+      b.localeCompare(a),
+    );
+  },
+  // Хэлбэр өөрчлөгдвөл хувилбарыг ахиулна — invoices/page.tsx-ийн тайлбарыг үз
+  ['txn-months', 'v1'],
+  { tags: ['transactions'], revalidate: 600 },
+);
 
 const STATUS_STYLE: Record<string, string> = {
   MATCHED: 'bg-emerald-100 text-emerald-800',
   PARTIAL: 'bg-amber-100 text-amber-900',
   UNMATCHED: 'bg-red-100 text-red-800',
   IGNORED: 'bg-slate-100 text-slate-600',
-};
-
-const STATUS_LABEL: Record<string, string> = {
-  MATCHED: 'Хуваарилсан',
-  PARTIAL: 'Дутуу',
-  UNMATCHED: 'Хуваарилаагүй',
-  IGNORED: 'Тооцохгүй',
 };
 
 /**
@@ -45,122 +67,76 @@ const STATUS_LABEL: Record<string, string> = {
 export default async function AdminPaymentsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ category?: string; status?: string; q?: string; month?: string; tab?: string }>;
+  searchParams: Promise<{
+    category?: string;
+    status?: string;
+    q?: string;
+    month?: string;
+    tab?: string;
+    page?: string;
+    size?: string;
+  }>;
 }) {
   const params = await searchParams;
   // Таб нь URL-д — шүүлт, хуудас сэргээхэд алдагдахгүй
   const tab = params.tab === 'import' ? 'import' : 'list';
-  const category = CATEGORY_KEYS.includes(params.category as BillCategory)
-    ? (params.category as BillCategory)
-    : null;
-  const status = ['MATCHED', 'PARTIAL', 'UNMATCHED', 'IGNORED'].includes(params.status ?? '')
-    ? params.status!
-    : null;
-  const search = params.q?.trim() ?? '';
-  // 'YYYY-MM' — тухайн сард ХИЙГДСЭН гүйлгээ. Хоосон бол бүх хугацаа.
-  const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(params.month ?? '') ? params.month! : '';
+  const filters = parsePaymentFilters(params);
+  const { category, status, month, search } = filters;
+  const paging = parsePaging(params);
 
   const db = createAdminClient();
 
-  let query = db
-    .from('transactions')
-    .select(
-      'id, txn_date, amount, description, source_category, status, parsed_flat_number, allocations(id, amount, category, flats(flat_number, owner_name))',
-    )
-    .order('txn_date', { ascending: false })
-    .limit(1000);
-
-  if (category) query = query.eq('source_category', category);
-  if (status) query = query.eq('status', status);
-  if (month) {
-    // Сарын эхнээс дараа сарын эхэн хүртэл
-    const [y, m] = month.split('-').map(Number);
-    const next = m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, '0')}-01`;
-    query = query.gte('txn_date', `${month}-01`).lt('txn_date', next);
-  }
-
-  const [{ data }, allDates, { data: accountRows }, { count: unmatchedTotal }, { count: autoFixable }] =
-    await Promise.all([
-    query,
-    // Сарын сонголт БҮТЭН байх ёстой — дутвал хуучин сар цэснээс алга болно
-    fetchAllRows<{ txn_date: string }>((from, to) =>
-      db.from('transactions').select('txn_date').range(from, to),
-    ),
-    // «Хуулга оруулах» табын бөөн үйлдлүүдэд хэрэгтэй
-    db.from('bank_accounts').select('id, account_number, category, display_name').order('category'),
-    db
-      .from('transactions')
-      .select('id', { count: 'exact', head: true })
-      .is('parsed_flat_number', null)
-      .eq('status', 'UNMATCHED'),
-    db
-      .from('v_transactions_remaining')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'UNMATCHED')
-      .not('parsed_flat_number', 'is', null),
+  // Таб бүр ЗӨВХӨН өөрт хэрэгтэйгээ татна — нөгөө табын хүсэлт дэмий хүлээлгэнэ
+  const [index, months, importData] = await Promise.all([
+    tab === 'list' ? loadPaymentIndex(db, filters) : Promise.resolve([]),
+    tab === 'list' ? loadTxnMonths() : Promise.resolve([] as string[]),
+    tab === 'import'
+      ? Promise.all([
+          // «Хуулга оруулах» табын бөөн үйлдлүүдэд хэрэгтэй
+          db.from('bank_accounts').select('id, account_number, category, display_name').order('category'),
+          db
+            .from('transactions')
+            .select('id', { count: 'exact', head: true })
+            .is('parsed_flat_number', null)
+            .eq('status', 'UNMATCHED'),
+          db
+            .from('v_transactions_remaining')
+            .select('id', { count: 'exact', head: true })
+            .eq('status', 'UNMATCHED')
+            .not('parsed_flat_number', 'is', null),
+        ])
+      : null,
   ]);
 
-  const accounts = (accountRows ?? []) as BankAccount[];
+  const accounts = (importData?.[0].data ?? []) as BankAccount[];
+  const unmatchedTotal = importData?.[1].count ?? 0;
+  const autoFixable = importData?.[2].count ?? 0;
 
-  // Гүйлгээ орсон сарууд — шүүлтүүрийн сонголт
-  const months = [
-    ...new Set((allDates ?? []).map((r) => String(r.txn_date).slice(0, 7))),
-  ].sort((a, b) => b.localeCompare(a));
+  // Нийт дүн, тоолол — ШҮҮСЭН БҮХ мөрөөр (зөвхөн энэ хуудсаар биш)
+  const total = index.reduce((s, r) => s + r.amount, 0);
+  const allocated = index.reduce((s, r) => s + (r.amount - r.remaining), 0);
 
-  type Row = {
-    id: string;
-    txn_date: string;
-    amount: number;
-    description: string;
-    source_category: BillCategory;
-    status: string;
-    parsed_flat_number: number | null;
-    allocations: { id: string; amount: number; category: BillCategory; flat: string }[];
-  };
+  // Хуваарилагдаагүй / дутуу хуваарилсан гүйлгээ — эдгээр мөнгө айлын
+  // үлдэгдэлд ТУСААГҮЙ байна, тиймээс админ гараар шийдэх ёстой
+  const unmatched = index.filter((r) => r.status === 'UNMATCHED').length;
+  const partial = index.filter((r) => r.status === 'PARTIAL').length;
 
-  let rows: Row[] = (data ?? []).map((t) => ({
-    id: t.id as string,
-    txn_date: t.txn_date as string,
-    amount: Number(t.amount),
-    description: t.description as string,
-    source_category: t.source_category as BillCategory,
-    status: t.status as string,
-    parsed_flat_number: t.parsed_flat_number as number | null,
-    allocations: ((t.allocations ?? []) as unknown as {
-      id: string;
-      amount: number;
-      category: BillCategory;
-      flats: { flat_number: number; owner_name: string | null } | null;
-    }[]).map((a) => ({
-      id: a.id,
-      amount: Number(a.amount),
-      category: a.category,
-      flat: a.flats ? String(a.flats.flat_number) : '—',
-    })),
-  }));
+  // Зөвхөн энэ хуудасны мөрүүдийг бүтнээр нь татна
+  const page = pageInfo(index.length, paging);
+  const rows = await loadPaymentRows(
+    db,
+    index.slice(page.from === 0 ? 0 : page.from - 1, page.to).map((r) => r.id),
+  );
 
-  if (search) {
-    // Цэвэр тоо бол ТООТ-ын яг тохирол — «7» нь 178, 157-г татахгүй
-    rows = rows.filter((r) =>
-      matchesSearch(search, {
-        // Оногдсон тоот байвал түүнийг, үгүй бол таасныг нь авна
-        flatNumber:
-          r.allocations.length > 0 ? Number(r.allocations[0].flat) : r.parsed_flat_number,
-        texts: [r.description],
-      }),
-    );
-  }
-
-  const total = rows.reduce((s, r) => s + r.amount, 0);
-  const allocated = rows.reduce((s, r) => s + r.allocations.reduce((x, a) => x + a.amount, 0), 0);
-
-  /** Шүүлт солиход бусад параметрийг хэвээр авч явах URL */
+  /** Шүүлт солиход бусад параметрийг хэвээр авч явах URL. Хуудас 1 рүү буцна. */
   const hrefWith = (patch: Record<string, string>) => {
     const next = new URLSearchParams({
       ...(month ? { month } : {}),
       ...(category ? { category } : {}),
       ...(status ? { status } : {}),
       ...(search ? { q: search } : {}),
+      // Сонгосон мөрийн тоо шүүлт солиход алдагдахгүй
+      ...(paging.size !== DEFAULT_PAGE_SIZE ? { size: String(paging.size) } : {}),
     });
     for (const [key, value] of Object.entries(patch)) {
       if (value) next.set(key, value);
@@ -169,20 +145,14 @@ export default async function AdminPaymentsPage({
     return `/admin/payments?${next}`;
   };
 
-  // Хуваарилагдаагүй / дутуу хуваарилсан гүйлгээ — эдгээр мөнгө айлын
-  // үлдэгдэлд ТУСААГҮЙ байна, тиймээс админ гараар шийдэх ёстой
-  const unmatched = rows.filter((r) => r.status === 'UNMATCHED').length;
-  const partial = rows.filter((r) => r.status === 'PARTIAL').length;
-
-  const exportHeaders = ['Огноо', 'Дүн', 'Гүйлгээний утга', 'Оногдсон тоот', 'Данс', 'Төлөв'];
-  const exportRows: (string | number | null)[][] = rows.map((r) => [
-    r.txn_date,
-    r.amount,
-    r.description,
-    r.allocations.map((a) => a.flat).join(', ') || '—',
-    CATEGORY_LABEL[r.source_category] ?? r.source_category,
-    r.status,
-  ]);
+  // Excel-ийг товч ДАРАХАД серверээс татна — мянган мөрийг хуудсанд
+  // шингээж явуулбал хуудас удаашрана
+  const exportQuery = new URLSearchParams({
+    ...(month ? { month } : {}),
+    ...(category ? { category } : {}),
+    ...(status ? { status } : {}),
+    ...(search ? { q: search } : {}),
+  });
 
   return (
     <div>
@@ -234,8 +204,8 @@ export default async function AdminPaymentsPage({
             <p className="mb-3 text-sm text-slate-500">
               Тоот таних дүрэм сайжирсан, эсвэл хуваарилалт гацсан үед хэрэглэнэ.
             </p>
-            <ReparseButton count={unmatchedTotal ?? 0} />
-            <ReallocateButton count={autoFixable ?? 0} />
+            <ReparseButton count={unmatchedTotal} />
+            <ReallocateButton count={autoFixable} />
           </section>
         </div>
       )}
@@ -245,7 +215,9 @@ export default async function AdminPaymentsPage({
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Гүйлгээ</p>
-          <p className="mt-1 text-2xl font-bold tabular-nums text-slate-900">{rows.length}</p>
+          <p className="mt-1 text-2xl font-bold tabular-nums text-slate-900">
+            {index.length.toLocaleString('mn-MN')}
+          </p>
         </div>
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
           <p className="text-xs font-medium uppercase tracking-wide text-emerald-800">Нийт орлого</p>
@@ -267,8 +239,8 @@ export default async function AdminPaymentsPage({
           <ExcelExportButton
             filename={`Баримт ${month || 'бүх хугацаа'}`}
             sheetName="Баримт"
-            headers={exportHeaders}
-            rows={exportRows}
+            source={`/api/admin/payments/export?${exportQuery}`}
+            count={index.length}
           />
         }
       >
@@ -325,11 +297,13 @@ export default async function AdminPaymentsPage({
         <AddPayment defaultCategory={category ?? undefined} />
       </div>
 
+      {/* Хуудас солиход энд гүйлгэнэ. Наалттай цэсний доор үлдэхгүйн тулд scroll-mt. */}
+      <div id="list-top" className="scroll-mt-20" />
       <ResultSummary
         scope={`${month ? formatBillingMonth(month) : 'Бүх хугацаа'} · ${
           category ? CATEGORY_LABEL[category].toLowerCase() : 'бүх данс'
         }${search ? ` · «${search}»` : ''}`}
-        count={rows.length}
+        count={index.length}
         unit="гүйлгээ"
       >
         {/* Чип нь «Төлөв» шүүлттэй ижил зүйлийг заадаг — дарвал тэр рүү аваачна */}
@@ -347,13 +321,14 @@ export default async function AdminPaymentsPage({
         />
       </ResultSummary>
 
-      {rows.length === 0 ? (
+      {index.length === 0 ? (
         <div className="rounded-xl border border-dashed border-slate-300 bg-white/60 px-6 py-12 text-center text-sm text-slate-500">
           Гүйлгээ олдсонгүй.
         </div>
       ) : (
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="max-h-[40rem] overflow-auto">
+          {/* key — хуудас солиход дотоод гүйлгээ эхэндээ буцна */}
+          <div key={`${page.page}-${page.size}`} className="max-h-[40rem] overflow-auto">
             <table className="w-full text-sm">
               <thead className="sticky top-0 z-10 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                 <tr className="border-b border-slate-200">
@@ -433,10 +408,22 @@ export default async function AdminPaymentsPage({
             </table>
           </div>
 
+          {/* Нийт дүн нь ШҮҮСЭН БҮХ гүйлгээнийх — зөвхөн энэ хуудасных биш */}
           <div className="flex items-baseline justify-between border-t border-slate-200 bg-slate-50 px-4 py-3">
-            <span className="text-sm text-slate-600">{rows.length} гүйлгээ</span>
+            <span className="text-sm text-slate-600">
+              Нийт {index.length.toLocaleString('mn-MN')} гүйлгээ
+            </span>
             <span className="text-lg font-bold tabular-nums text-slate-900">{formatMnt(total)}</span>
           </div>
+
+          <Pagination
+            page={page.page}
+            pageCount={page.pageCount}
+            size={page.size}
+            total={page.total}
+            from={page.from}
+            to={page.to}
+          />
         </div>
       )}
       </>

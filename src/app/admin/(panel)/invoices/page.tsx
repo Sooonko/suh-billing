@@ -7,10 +7,12 @@ import { AddInvoice } from '@/components/admin/AddInvoice';
 import { ExcelExportButton } from '@/components/admin/filters/ExcelExportButton';
 import { FilterField, FilterPanel } from '@/components/admin/filters/FilterPanel';
 import { MonthPicker } from '@/components/admin/filters/MonthPicker';
+import { Pagination } from '@/components/admin/filters/Pagination';
 import { ResultSummary } from '@/components/admin/filters/ResultSummary';
 import { SearchBox } from '@/components/admin/filters/SearchBox';
 import { SegmentedNav } from '@/components/admin/filters/SegmentedNav';
 import { WarningChip } from '@/components/admin/filters/WarningChip';
+import { DEFAULT_PAGE_SIZE, paginate, parsePaging } from '@/lib/pagination';
 import { matchesSearch } from '@/lib/search-flat';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { formatBillingMonth } from '@/lib/format';
@@ -76,9 +78,21 @@ async function fetchInvoices(category: BillCategory, month: string) {
 export default async function AdminInvoicesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ category?: string; month?: string; q?: string; tab?: string; flag?: string }>;
+  searchParams: Promise<{
+    category?: string;
+    month?: string;
+    q?: string;
+    tab?: string;
+    flag?: string;
+    page?: string;
+    size?: string;
+  }>;
 }) {
   const params = await searchParams;
+  const paging = parsePaging(params);
+  /** Сонгосон мөрийн тоо — шүүлт солиход алдагдахгүй. Хуудас 1 рүү буцна. */
+  const sizeParam: Record<string, string> =
+    paging.size !== DEFAULT_PAGE_SIZE ? { size: String(paging.size) } : {};
   // Таб нь URL-д — шүүлт, хуудас сэргээхэд алдагдахгүй
   const tab = params.tab === 'import' ? 'import' : 'list';
 
@@ -189,6 +203,7 @@ export default async function AdminInvoicesPage({
       category,
       ...(month ? { month } : {}),
       ...(search ? { q: search } : {}),
+      ...sizeParam,
     });
     if (flag !== next) params.set('flag', next);
     return `/admin/invoices?${params}`;
@@ -213,6 +228,9 @@ export default async function AdminInvoicesPage({
         ? [i.flat_number, i.owner_name, i.prev_reading, i.current_reading, gap(i.prev_reading, i.current_reading), i.usage_amount, i.bill_amount]
         : [i.flat_number, i.owner_name, i.bill_amount],
   );
+
+  // Дэлгэцэнд зөвхөн нэг хуудас. Нийлбэр, чип, Excel нь БҮХ шүүсэн мөрөөр.
+  const page = paginate(visible, paging);
 
   return (
     <div className="space-y-8">
@@ -276,6 +294,7 @@ export default async function AdminInvoicesPage({
                     category: c.key,
                     ...(month ? { month } : {}),
                     ...(search ? { q: search } : {}),
+                    ...sizeParam,
                   })}`,
                   active: c.key === category,
                 }))}
@@ -296,6 +315,8 @@ export default async function AdminInvoicesPage({
             <AddInvoice category={category} month={month} />
           </div>
 
+          {/* Хуудас солиход энд гүйлгэнэ */}
+          <div id="list-top" className="scroll-mt-20" />
           <ResultSummary
             scope={`${formatBillingMonth(month)}-ын ${CATEGORY_LABEL[category].toLowerCase()}${flag === 'nogrowth'
                 ? ' · заалт нэмэгдээгүй'
@@ -319,7 +340,28 @@ export default async function AdminInvoicesPage({
             />
           </ResultSummary>
 
-          <InvoiceList invoices={visible} category={category} month={month} />
+          <InvoiceList
+            // key — хуудас солиход хүснэгтийн дотоод гүйлгээ эхэндээ буцна
+            key={`${page.page}-${page.size}`}
+            invoices={page.rows}
+            category={category}
+            month={month}
+            summary={{
+              count: visible.length,
+              total: visible.reduce((sum, i) => sum + Number(i.bill_amount), 0),
+              showOwner: visible.some((i) => i.owner_name),
+            }}
+            pagination={
+              <Pagination
+                page={page.page}
+                pageCount={page.pageCount}
+                size={page.size}
+                total={page.total}
+                from={page.from}
+                to={page.to}
+              />
+            }
+          />
         </section>
       ))}
 

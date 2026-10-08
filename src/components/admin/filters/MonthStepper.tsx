@@ -36,6 +36,8 @@ export function MonthStepper({
   /** Бусад шүүлтийг хэвээр хадгалаад зөвхөн сарыг сольсон URL */
   const hrefFor = (month: string | null) => {
     const next = new URLSearchParams(params.toString());
+    // Шүүлт өөрчлөгдвөл 1-р хуудас руу — эс бөгөөс хэтэрсэн хуудас хоосон гарна
+    next.delete('page');
     if (month) next.set('month', month);
     else next.delete('month');
     return `?${next.toString()}`;

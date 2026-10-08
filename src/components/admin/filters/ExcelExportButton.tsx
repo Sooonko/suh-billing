@@ -1,38 +1,58 @@
 'use client';
 
 import { useState } from 'react';
+import { useToast } from '@/components/ui/Feedback';
+import { callApi } from '@/lib/api-client';
+
+type Matrix = { headers: string[]; rows: (string | number | null)[][] };
 
 /**
  * Шүүсэн жагсаалтыг Excel болгож татна.
  *
  * ЯАГААД БРАУЗЕР ТАЛД: файл үүсгэх ажлыг сервер рүү явуулбал Vercel-ийн
- * 10 секундын хязгаарт цохих эрсдэлтэй, бас датаг дахин татах хэрэгтэй
- * болно. Мөрүүд нь дэлгэцэнд аль хэдийн байгаа тул эндээс шууд бичнэ.
+ * 10 секундын хязгаарт цохих эрсдэлтэй. Файлыг энд бичнэ.
+ *
+ * Мөрүүд ХОЁР янзаар ирнэ:
+ *  · `headers` + `rows` — хуудсанд аль хэдийн байгаа цөөн мөр (айлууд, нэхэмжлэл)
+ *  · `source` — товч ДАРАХАД серверээс татна. Мянга мянган мөртэй
+ *    жагсаалтад (баримт): хуудас бүрт бүх мөрийг шингээж явуулбал
+ *    хуудаслалтын хурд алга болно.
  *
  * `xlsx` нь ~400KB — динамикаар татна. Товч дарах хүртэл хуудасны
  * ачаалалд нэмэгдэхгүй.
  *
  * ⚠️ Функцийг props-оор дамжуулж БОЛОХГҮЙ (Server → Client Component-д
  * функц serialize хийгддэггүй). Тиймээс хуудас нь толгой ба мөрүүдийг
- * ЭНГИЙН массив болгож бэлдээд өгнө.
+ * ЭНГИЙН массив, эсвэл URL болгож өгнө.
  */
-export function ExcelExportButton({
-  filename,
-  sheetName = 'Жагсаалт',
-  headers,
-  rows,
-}: {
-  /** Өргөтгөлгүй: «Ус дулаан 2026-09» */
-  filename: string;
-  sheetName?: string;
-  headers: string[];
-  rows: (string | number | null)[][];
-}) {
+export function ExcelExportButton(
+  props: {
+    /** Өргөтгөлгүй: «Ус дулаан 2026-09» */
+    filename: string;
+    sheetName?: string;
+  } & (Matrix | { /** `{ headers, rows }` JSON буцаадаг API */ source: string; /** Татах мөрийн тоо */ count: number }),
+) {
+  const { filename, sheetName = 'Жагсаалт' } = props;
+  const toast = useToast();
   const [busy, setBusy] = useState(false);
+  const count = 'source' in props ? props.count : props.rows.length;
 
   async function download() {
     setBusy(true);
     try {
+      let matrix: Matrix;
+      if ('source' in props) {
+        const result = await callApi<Matrix>(props.source);
+        if (!result.ok) {
+          toast(result.error, 'error');
+          return;
+        }
+        matrix = result.data;
+      } else {
+        matrix = { headers: props.headers, rows: props.rows };
+      }
+      const { headers, rows } = matrix;
+
       const XLSX = await import('xlsx');
       const sheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
 
@@ -50,6 +70,8 @@ export function ExcelExportButton({
       // Excel-ийн хуудасны нэр 31 тэмдэгтээс хэтэрвэл файл эвдэрдэг
       XLSX.utils.book_append_sheet(book, sheet, sheetName.slice(0, 31));
       XLSX.writeFile(book, `${filename}.xlsx`);
+    } catch {
+      toast('Excel файл үүсгэж чадсангүй. Дахин оролдоно уу.', 'error');
     } finally {
       setBusy(false);
     }
@@ -59,8 +81,8 @@ export function ExcelExportButton({
     <button
       type="button"
       onClick={download}
-      disabled={busy || rows.length === 0}
-      title={rows.length === 0 ? 'Татах мөр байхгүй' : `${rows.length} мөр татна`}
+      disabled={busy || count === 0}
+      title={count === 0 ? 'Татах мөр байхгүй' : `${count.toLocaleString('mn-MN')} мөр татна`}
       className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-300 bg-white px-3.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
     >
       <svg

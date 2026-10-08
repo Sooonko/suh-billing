@@ -2,6 +2,8 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { useConfirm, useToast } from '@/components/ui/Feedback';
+import { callApi } from '@/lib/api-client';
 import type { AnnouncementKind } from '@/lib/types';
 
 export interface AdminAnnouncement {
@@ -21,38 +23,73 @@ const KIND_LABEL: Record<AnnouncementKind, { label: string; badge: string }> = {
   MAINTENANCE: { label: 'Засвар', badge: 'bg-amber-100 text-amber-900' },
 };
 
-/** Нэг зарлалын мөр — нуух, онцлох, устгах үйлдэлтэй */
+const BTN =
+  'rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50';
+
+/** Нэг зарлалын мөр — нуух, онцлох, устгах, холбоос хуулах үйлдэлтэй */
 export function AnnouncementRow({ item }: { item: AdminAnnouncement }) {
   const router = useRouter();
+  const confirm = useConfirm();
+  const toast = useToast();
   const [busy, setBusy] = useState(false);
   const kind = KIND_LABEL[item.kind] ?? KIND_LABEL.INFO;
 
-  async function patch(patchBody: { isActive?: boolean; isPinned?: boolean }) {
+  async function patch(patchBody: { isActive?: boolean; isPinned?: boolean }, done: string) {
     setBusy(true);
-    await fetch('/api/admin/announcements', {
+    const result = await callApi('/api/admin/announcements', {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: item.id, ...patchBody }),
+      json: { id: item.id, ...patchBody },
     });
     setBusy(false);
+    // Өмнө нь алдааг чимээгүй залгидаг байв — админ «дарсан, юу ч болсонгүй» гэж төөрдөг
+    if (!result.ok) {
+      toast(result.error, 'error');
+      return;
+    }
+    toast(done);
     router.refresh();
   }
 
-  async function remove() {
-    // Бүрмөсөн устгах тул баталгаажуулна
-    if (!confirm(`«${item.title}» зарлалыг бүрмөсөн устгах уу?`)) return;
-    setBusy(true);
-    await fetch(`/api/admin/announcements?id=${item.id}`, { method: 'DELETE' });
-    setBusy(false);
-    router.refresh();
+  function remove() {
+    confirm({
+      title: 'Зарлалыг бүрмөсөн устгах уу?',
+      quote: item.title,
+      message: 'Түр нуух бол «Нуух» товчийг ашиглана уу — хүссэн үедээ буцааж гаргана.',
+      confirmLabel: 'Устгах',
+      tone: 'danger',
+      action: async () => {
+        const result = await callApi(`/api/admin/announcements?id=${encodeURIComponent(item.id)}`, {
+          method: 'DELETE',
+        });
+        if (!result.ok) return result.error;
+        toast('Зарлал устлаа');
+        router.refresh();
+      },
+    });
+  }
+
+  /**
+   * Зарлалын холбоосыг хуулна — Messenger, Facebook группт тавихад.
+   * Тэнд гарчиг, тайлбартай урьдчилсан харагдац (preview) автоматаар гарна.
+   */
+  async function copyLink() {
+    const url = `${window.location.origin}/medee/${item.id}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast('Холбоос хуулагдлаа — чат руу буулгаж тавина уу');
+    } catch {
+      // http эсвэл хуучин хөтөч — гараар хуулах боломж өгнө
+      window.prompt('Холбоосыг хуулна уу:', url);
+    }
   }
 
   const expired = item.expires_at !== null && new Date(item.expires_at) < new Date();
+  const visible = item.is_active && !expired;
 
   return (
     <li
       className={`rounded-xl border p-4 shadow-sm transition ${
-        item.is_active && !expired ? 'border-slate-200 bg-white' : 'border-slate-200 bg-slate-50 opacity-70'
+        visible ? 'border-slate-200 bg-white' : 'border-slate-200 bg-slate-50 opacity-70'
       }`}
     >
       <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -74,19 +111,29 @@ export function AnnouncementRow({ item }: { item: AdminAnnouncement }) {
         <button
           type="button"
           disabled={busy}
-          onClick={() => patch({ isActive: !item.is_active })}
-          className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+          onClick={() =>
+            patch({ isActive: !item.is_active }, item.is_active ? 'Зарлалыг нуулаа' : 'Зарлал дахин харагдана')
+          }
+          className={BTN}
         >
           {item.is_active ? 'Нуух' : 'Гаргах'}
         </button>
         <button
           type="button"
           disabled={busy}
-          onClick={() => patch({ isPinned: !item.is_pinned })}
-          className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+          onClick={() =>
+            patch({ isPinned: !item.is_pinned }, item.is_pinned ? 'Онцлохоос хаслаа' : 'Онцлох болголоо')
+          }
+          className={BTN}
         >
           {item.is_pinned ? 'Онцлохоос хасах' : 'Онцлох'}
         </button>
+        {/* Нуусан зарлалын холбоос оршин суугчид «олдсонгүй» гэж гарна — хуулах нь утгагүй */}
+        {visible && (
+          <button type="button" onClick={copyLink} className={BTN}>
+            🔗 Холбоос хуулах
+          </button>
+        )}
         <button
           type="button"
           disabled={busy}

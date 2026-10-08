@@ -29,6 +29,8 @@ export function SearchBox({
   function submit(event: React.FormEvent) {
     event.preventDefault();
     const next = new URLSearchParams(params.toString());
+    // Шүүлт өөрчлөгдвөл 1-р хуудас руу — эс бөгөөс хэтэрсэн хуудас хоосон гарна
+    next.delete('page');
     const trimmed = value.trim();
     if (trimmed) next.set('q', trimmed);
     else next.delete('q');
@@ -78,6 +80,8 @@ export function SearchBox({
           onClick={() => {
             setValue('');
             const next = new URLSearchParams(params.toString());
+            // Шүүлт өөрчлөгдвөл 1-р хуудас руу — эс бөгөөс хэтэрсэн хуудас хоосон гарна
+            next.delete('page');
             next.delete('q');
             startTransition(() => router.push(`?${next.toString()}`));
           }}

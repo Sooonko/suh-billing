@@ -1,5 +1,7 @@
 import { notFound } from 'next/navigation';
+import { NewsTeaser } from '@/components/home/NewsTeaser';
 import { ResidentDashboard } from '@/components/resident/ResidentDashboard';
+import { loadAnnouncements } from '@/lib/announcements';
 import {
   allocatePaymentsToMonths,
   splitDebtByMonth,
@@ -38,7 +40,7 @@ export default async function FlatPage({ params }: { params: Promise<{ flat: str
 
   if (!flatRow) notFound();
 
-  const [{ data: states }, { data: paid }, { data: billed }] = await Promise.all([
+  const [{ data: states }, { data: paid }, { data: billed }, announcements] = await Promise.all([
     db.from('v_flat_category_state').select('*').eq('flat_id', flatRow.id),
     // Төлбөрийн түүх. Огноо нь БАНКНЫ гүйлгээнийх, бүртгэсэн огноо биш —
     // оршин суугч өөрийн хуулгатайгаа тулгаж чадах ёстой.
@@ -52,6 +54,8 @@ export default async function FlatPage({ params }: { params: Promise<{ flat: str
       .select('billing_month, category, bill_amount')
       .eq('flat_id', flatRow.id)
       .limit(500),
+    // Кэшээс — уншаагүй зарлал байвал дээр нь сануулга гарна
+    loadAnnouncements(),
   ]);
 
   /**
@@ -168,6 +172,10 @@ export default async function FlatPage({ params }: { params: Promise<{ flat: str
   };
 
   return (
-    <ResidentDashboard data={data} />
+    <>
+      {/* Ихэнх хүн нүүр хуудсыг алгасаад шууд энд ирдэг — мэдээг энд ч сануулна */}
+      <NewsTeaser items={announcements} target="flat" />
+      <ResidentDashboard data={data} />
+    </>
   );
 }

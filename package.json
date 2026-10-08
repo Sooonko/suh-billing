@@ -16,7 +16,9 @@
     "test:fifo": "tsx src/lib/billing/fifo-debt.test.ts",
     "test:reference": "tsx src/lib/payment-reference.test.ts",
     "test:search": "tsx src/lib/search-flat.test.ts",
-    "test:money": "tsx src/lib/money.test.ts"
+    "test:money": "tsx src/lib/money.test.ts",
+    "test:pagination": "tsx src/lib/pagination.test.ts",
+    "test:news": "tsx src/lib/news-seen.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.7.0",

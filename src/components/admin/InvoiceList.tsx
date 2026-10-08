@@ -378,11 +378,18 @@ export function InvoiceList({
   invoices,
   category,
   month,
+  summary,
+  pagination,
 }: {
+  /** Энэ ХУУДАСНЫ мөрүүд */
   invoices: InvoiceRow[];
   category: BillCategory;
   /** 'YYYY-MM' — баганын толгойд «8 сар / 9 сар» гэж бичихэд хэрэглэнэ */
   month: string;
+  /** Шүүсэн БҮХ мөрийн тоо, дүн — хуудаслалтаас үл хамаарна */
+  summary: { count: number; total: number; showOwner: boolean };
+  /** Хүснэгтийн доорх хуудаслалт */
+  pagination?: React.ReactNode;
 }) {
   const isWater = category === 'WATER_HEAT';
   // Цахилгаанд тоолуур бий → заалт засна. СӨХ-д тоолуургүй → дүн засна.
@@ -392,7 +399,8 @@ export function InvoiceList({
    * өргөнийг дэмий идэж, нүдийг тарааж байсан тул нэр огт байхгүй үед
    * баганыг БҮРЭН хасна.
    */
-  const showOwner = invoices.some((i) => i.owner_name);
+  // БҮХ мөрөөр шийднэ — хуудас бүрээр шийдвэл багана хуудас солиход гарч/алга болно
+  const showOwner = summary.showOwner;
 
   if (invoices.length === 0) {
     return (
@@ -402,7 +410,6 @@ export function InvoiceList({
     );
   }
 
-  const total = invoices.reduce((sum, i) => sum + Number(i.bill_amount), 0);
   const prevLabel = shortMonth(previousMonth(month));
   const currentLabel = shortMonth(month);
 
@@ -491,9 +498,12 @@ export function InvoiceList({
       </div>
 
       <div className="flex items-baseline justify-between border-t border-slate-200 bg-slate-50 px-4 py-3">
-        <span className="text-sm text-slate-600">{invoices.length} нэхэмжлэл</span>
-        <span className="text-lg font-bold tabular-nums text-slate-900">{formatMnt(total)}</span>
+        <span className="text-sm text-slate-600">
+          Нийт {summary.count.toLocaleString('mn-MN')} нэхэмжлэл
+        </span>
+        <span className="text-lg font-bold tabular-nums text-slate-900">{formatMnt(summary.total)}</span>
       </div>
+      {pagination}
     </div>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { callApi } from '@/lib/api-client';
 
 interface Result {
   checked: number;
@@ -32,15 +33,14 @@ export function ReparseButton({ count }: { count: number }) {
     setBusy(true);
     setError(null);
 
-    const response = await fetch('/api/admin/reconcile/reparse', { method: 'POST' });
-    const data = await response.json();
+    const response = await callApi<Result>('/api/admin/reconcile/reparse', { method: 'POST' });
     setBusy(false);
 
     if (!response.ok) {
-      setError(data.error ?? 'Алдаа гарлаа');
+      setError(response.error);
       return;
     }
-    setResult(data as Result);
+    setResult(response.data);
     router.refresh();
   }
 

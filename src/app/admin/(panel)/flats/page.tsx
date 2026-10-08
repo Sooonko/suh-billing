@@ -4,11 +4,13 @@ import { formatBillingMonth, formatMnt, shortMonth } from '@/lib/format';
 import { ExcelExportButton } from '@/components/admin/filters/ExcelExportButton';
 import { FilterField, FilterPanel } from '@/components/admin/filters/FilterPanel';
 import { MonthStepper } from '@/components/admin/filters/MonthStepper';
+import { Pagination } from '@/components/admin/filters/Pagination';
 import { ResultSummary } from '@/components/admin/filters/ResultSummary';
 import { SearchBox } from '@/components/admin/filters/SearchBox';
 import { SegmentedNav } from '@/components/admin/filters/SegmentedNav';
 import { WarningChip } from '@/components/admin/filters/WarningChip';
 import { hasDebt, hasOverpaid, isSettled } from '@/lib/money';
+import { DEFAULT_PAGE_SIZE, paginate, parsePaging } from '@/lib/pagination';
 import { matchesSearch } from '@/lib/search-flat';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { fetchAllRows } from '@/lib/supabase/fetch-all';
@@ -58,9 +60,18 @@ const emptyCategories = (): FlatBalance['byCategory'] => ({
 export default async function AdminFlatsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ category?: string; state?: string; q?: string; month?: string; flag?: string }>;
+  searchParams: Promise<{
+    category?: string;
+    state?: string;
+    q?: string;
+    month?: string;
+    flag?: string;
+    page?: string;
+    size?: string;
+  }>;
 }) {
   const params = await searchParams;
+  const paging = parsePaging(params);
   const category = CATEGORY_KEYS.includes(params.category as BillCategory)
     ? (params.category as BillCategory)
     : null;
@@ -271,6 +282,8 @@ export default async function AdminFlatsPage({
       ...(state !== 'all' ? { state } : {}),
       ...(search ? { q: search } : {}),
       ...(flag ? { flag } : {}),
+      // Сонгосон мөрийн тоо шүүлт солиход алдагдахгүй. Хуудас 1 рүү буцна.
+      ...(paging.size !== DEFAULT_PAGE_SIZE ? { size: String(paging.size) } : {}),
     });
     for (const [key, value] of Object.entries(patch)) {
       if (value) next.set(key, value);
@@ -321,6 +334,9 @@ export default async function AdminFlatsPage({
   );
 
   const scope = month ? shortMonth(month) : null;
+
+  // Дэлгэцэнд зөвхөн нэг хуудас. Нийлбэр, Excel нь БҮХ шүүсэн айлаар.
+  const page = paginate(flats, paging);
 
   return (
     <div>
@@ -434,6 +450,8 @@ export default async function AdminFlatsPage({
         </FilterField>
       </FilterPanel>
 
+      {/* Хуудас солиход энд гүйлгэнэ */}
+      <div id="list-top" className="scroll-mt-20" />
       <ResultSummary
         scope={`${month ? formatBillingMonth(month) : 'Бүх сар'} · ${
           category ? CATEGORY_LABEL[category].toLowerCase() : 'бүх ангилал'
@@ -469,7 +487,28 @@ export default async function AdminFlatsPage({
         )}
       </ResultSummary>
 
-      <FlatBalanceList flats={flats} category={category} />
+      <FlatBalanceList
+        // key — хуудас солиход хүснэгтийн дотоод гүйлгээ эхэндээ буцна
+        key={`${page.page}-${page.size}`}
+        flats={page.rows}
+        category={category}
+        summary={{
+          count: flats.length,
+          billed: flats.reduce((s, f) => s + (category ? f.byCategory[category].billed : f.totalBilled), 0),
+          paid: flats.reduce((s, f) => s + (category ? f.byCategory[category].paid : f.totalPaid), 0),
+          balance: flats.reduce((s, f) => s + balanceOf(f), 0),
+        }}
+        pagination={
+          <Pagination
+            page={page.page}
+            pageCount={page.pageCount}
+            size={page.size}
+            total={page.total}
+            from={page.from}
+            to={page.to}
+          />
+        }
+      />
     </div>
   );
 }

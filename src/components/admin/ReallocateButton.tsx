@@ -2,6 +2,8 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { useConfirm } from '@/components/ui/Feedback';
+import { callApi } from '@/lib/api-client';
 import { formatMnt } from '@/lib/format';
 
 interface Result {
@@ -18,6 +20,7 @@ interface Result {
  */
 export function ReallocateButton({ count }: { count: number }) {
   const router = useRouter();
+  const confirm = useConfirm();
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -25,19 +28,23 @@ export function ReallocateButton({ count }: { count: number }) {
   if (count === 0 && !result) return null;
 
   async function run() {
-    if (!confirm(`${count} гүйлгээг таасан тоот руу нь автоматаар хуваарилах уу?`)) return;
+    const ok = await confirm({
+      title: 'Автоматаар хуваарилах уу?',
+      message: `${count} гүйлгээг утгаас нь таньсан тоот руу нь хуваарилна.`,
+      confirmLabel: 'Хуваарилах',
+    });
+    if (!ok) return;
     setBusy(true);
     setError(null);
 
-    const response = await fetch('/api/admin/reconcile/reallocate', { method: 'POST' });
-    const data = await response.json();
+    const response = await callApi<Result>('/api/admin/reconcile/reallocate', { method: 'POST' });
     setBusy(false);
 
     if (!response.ok) {
-      setError(data.error ?? 'Алдаа гарлаа');
+      setError(response.error);
       return;
     }
-    setResult(data as Result);
+    setResult(response.data);
     router.refresh();
   }
 

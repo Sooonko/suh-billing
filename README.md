@@ -56,7 +56,7 @@ soh-billing/
 │   │
 │   ├── components/
 │   │   ├── layout/                     # Цэс, толгой, хуулах товч
-│   │   ├── home/AnnouncementCard.tsx
+│   │   ├── home/AnnouncementFeed.tsx
 │   │   ├── resident/                   # Хураангуй, ангиллын карт, badge
 │   │   └── admin/                      # Login, зарлалын форм, Excel импорт
 │   │

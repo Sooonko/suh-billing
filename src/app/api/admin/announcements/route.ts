@@ -1,5 +1,6 @@
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, revalidateTag } from 'next/cache';
 import { NextResponse } from 'next/server';
+import { ANNOUNCEMENTS_TAG } from '@/lib/announcements';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { requireAdmin } from '@/lib/supabase/server';
 import type { AnnouncementKind } from '@/lib/types';
@@ -18,6 +19,8 @@ const KINDS: AnnouncementKind[] = ['INFO', 'URGENT', 'MAINTENANCE'];
  * тул хасахгүй, зөвхөн өөрчлөлт болох мөчид нь хүчингүй болгоно.
  */
 function revalidateHome() {
+  // Зарлалын кэш — нүүр, цэсний «шинэ» тэмдэг, тоотын дэлгэц, /medee/[id]
+  revalidateTag(ANNOUNCEMENTS_TAG);
   revalidatePath('/');
 }
 

@@ -2,7 +2,9 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import type { NewsStamp } from '@/lib/news-seen';
 import { NAV_ITEMS, NavIcon, isNavActive } from './nav-items';
+import { NewsBadge } from './NewsBadge';
 
 /**
  * Толгойн хэвтээ цэс — ЗӨВХӨН веб дээр (md-ээс дээш).
@@ -10,7 +12,7 @@ import { NAV_ITEMS, NavIcon, isNavActive } from './nav-items';
  * Хэрэглэгчийн ~40% компьютерээс ханддаг. Тэнд доод талын цэс эвгүй тул
  * толгойд нь хэвтээ болгож гаргав.
  */
-export function TopNav() {
+export function TopNav({ newsStamps }: { newsStamps: NewsStamp[] }) {
   const pathname = usePathname();
 
   return (
@@ -34,7 +36,10 @@ export function TopNav() {
                       : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
                 }`}
               >
-                <NavIcon d={icon} active={active} />
+                <span className="relative inline-flex">
+                  <NavIcon d={icon} active={active} />
+                  {href === '/' && <NewsBadge stamps={newsStamps} className="absolute -right-2 -top-1.5" />}
+                </span>
                 {label}
               </Link>
             </li>

@@ -32,10 +32,17 @@ function tone(value: number): string {
 export function FlatBalanceList({
   flats,
   category,
+  summary,
+  pagination,
 }: {
+  /** Энэ ХУУДАСНЫ айлууд */
   flats: FlatBalance[];
   /** null = бүх ангилал зэрэг */
   category: BillCategory | null;
+  /** Шүүсэн БҮХ айлын нийлбэр — хуудаслалтаас үл хамаарна */
+  summary: { count: number; billed: number; paid: number; balance: number };
+  /** Хүснэгтийн доорх хуудаслалт */
+  pagination?: React.ReactNode;
 }) {
   if (flats.length === 0) {
     return (
@@ -45,10 +52,7 @@ export function FlatBalanceList({
     );
   }
 
-  const sum = (pick: (f: FlatBalance) => number) => flats.reduce((s, f) => s + pick(f), 0);
-  const totalBilled = sum((f) => (category ? f.byCategory[category].billed : f.totalBilled));
-  const totalPaid = sum((f) => (category ? f.byCategory[category].paid : f.totalPaid));
-  const totalBalance = sum((f) => (category ? f.byCategory[category].balance : f.totalBalance));
+  const { billed: totalBilled, paid: totalPaid, balance: totalBalance } = summary;
 
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -142,7 +146,7 @@ export function FlatBalanceList({
       </div>
 
       <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 border-t border-slate-200 bg-slate-50 px-4 py-3">
-        <span className="text-sm text-slate-600">{flats.length} айл</span>
+        <span className="text-sm text-slate-600">Нийт {summary.count.toLocaleString('mn-MN')} айл</span>
         <div className="flex flex-wrap items-baseline gap-x-6 text-sm">
           <span className="text-slate-500">
             Нэхэмжилсэн <span className="font-semibold tabular-nums text-slate-900">{formatMnt(totalBilled)}</span>
@@ -158,6 +162,7 @@ export function FlatBalanceList({
           </span>
         </div>
       </div>
+      {pagination}
     </div>
   );
 }

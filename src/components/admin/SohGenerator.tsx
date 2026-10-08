@@ -2,6 +2,8 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { useConfirm } from '@/components/ui/Feedback';
+import { callApi } from '@/lib/api-client';
 import { formatBillingMonth, formatMnt } from '@/lib/format';
 
 /**
@@ -34,6 +36,7 @@ function currentMonth(): string {
 
 export function SohGenerator() {
   const router = useRouter();
+  const confirm = useConfirm();
   const [billingMonth, setBillingMonth] = useState(currentMonth());
   const [preview, setPreview] = useState<Preview | null>(null);
   const [result, setResult] = useState<Result | null>(null);
@@ -44,22 +47,20 @@ export function SohGenerator() {
     setBusy(dryRun ? 'check' : 'run');
     setError(null);
 
-    const response = await fetch('/api/admin/invoices/generate', {
+    const response = await callApi<Preview | Result>('/api/admin/invoices/generate', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ category: 'SOH', billingMonth, dryRun }),
+      json: { category: 'SOH', billingMonth, dryRun },
     });
-    const data = await response.json();
     setBusy(null);
 
     if (!response.ok) {
-      setError(data.error ?? 'Алдаа гарлаа');
+      setError(response.error);
       return;
     }
 
-    if (dryRun) setPreview(data as Preview);
+    if (dryRun) setPreview(response.data as Preview);
     else {
-      setResult(data as Result);
+      setResult(response.data as Result);
       setPreview(null);
       router.refresh();
     }
@@ -135,16 +136,23 @@ export function SohGenerator() {
           <div className="mt-4 flex flex-wrap gap-3">
             <button
               type="button"
-              onClick={() => {
-                if (
-                  !confirm(
-                    `${formatBillingMonth(billingMonth)}-д ${preview.flats} айлд ` +
-                      `${formatMnt(preview.amount)} нэхэмжлэл үүсгэх үү?`,
-                  )
-                ) {
-                  return;
-                }
-                send(false);
+              onClick={async () => {
+                const ok = await confirm({
+                  title: 'СӨХ-ийн нэхэмжлэл үүсгэх үү?',
+                  details: [
+                    ['Сар', formatBillingMonth(billingMonth)],
+                    ['Айлын тоо', String(preview.flats)],
+                    ['Айл тус бүрт', formatMnt(preview.amount)],
+                    ['Нийт дүн', formatMnt(preview.totalAmount)],
+                  ],
+                  warning:
+                    preview.replacing > 0
+                      ? `${preview.replacing} нэхэмжлэл аль хэдийн байгаа тул ДАРЖ бичнэ.`
+                      : undefined,
+                  confirmLabel: 'Үүсгэх',
+                  tone: 'success',
+                });
+                if (ok) send(false);
               }}
               disabled={busy !== null}
               className="rounded-lg bg-emerald-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-50"
