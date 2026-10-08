@@ -2,26 +2,28 @@
 
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTransition } from 'react';
+import { MonthInput, shiftMonth } from '@/components/ui/MonthInput';
 
 /**
- * Сар сонгогч — `<input type="month">`.
+ * Сар сонгогч — ДУРЫН сар (нэхэмжлэл).
  *
- * ЯАГААД СУМТАЙ ЦЭСЭЭС САЛСАН БЭ:
- * Өмнө нь ‹ › сум + цэс байсан бөгөөд цэс нь нэхэмжлэл АЛЬ ХЭДИЙН
- * байгаа саруудыг л харуулдаг. Тиймээс хуучин сард (6, 7 сар) шинээр
- * нэхэмжлэл нэмэх гэвэл тэр сар цэсэнд байхгүй тул тийш орох арга
- * байхгүй болдог байв — гогцоо.
+ * ЯАГААД ДУРЫН САР: сонголт нь нэхэмжлэл АЛЬ ХЭДИЙН байгаа саруудаар
+ * хязгаарлагдвал хуучин сард (6, 7 сар) шинээр нэхэмжлэл нэмэх гэхэд тэр
+ * сар цэсэнд байхгүй тул тийш орох арга байхгүй болдог — гогцоо.
+ * Дататай сарууд ногоон цэгээр тэмдэглэгдэнэ.
  *
- * Хөтчийн сар сонгогч нь дурын сарыг хүлээж авна, бас он сольж
- * сонгоход хялбар.
+ * ‹ › сум — админ ихэвчлэн өмнөх/дараах сар руу л хардаг.
  */
 export function MonthPicker({
   current,
+  marked,
   /** «Бүх хугацаа» сонголт нэмэх эсэх (хоосон болгож болно) */
   allowEmpty = false,
   emptyLabel = 'Бүх хугацаа',
 }: {
   current: string | null;
+  /** Дата байгаа сарууд */
+  marked?: string[];
   allowEmpty?: boolean;
   emptyLabel?: string;
 }) {
@@ -45,25 +47,42 @@ export function MonthPicker({
   }
 
   return (
-    <div className="flex items-center gap-2">
-      <input
-        type="month"
-        aria-label="Сар"
-        value={current ?? ''}
-        onChange={(e) => go(e.target.value || null)}
-        className="h-9 rounded-lg border border-slate-300 px-3 text-sm font-medium tabular-nums outline-none transition focus:border-slate-900"
-      />
+    <div className="flex items-center gap-1.5">
+      <StepButton label="Өмнөх сар" disabled={!current} onClick={() => current && go(shiftMonth(current, -1))}>
+        ‹
+      </StepButton>
+      <MonthInput value={current} onChange={go} marked={marked} allowEmpty={allowEmpty} emptyLabel={emptyLabel} />
+      <StepButton label="Дараах сар" disabled={!current} onClick={() => current && go(shiftMonth(current, 1))}>
+        ›
+      </StepButton>
       {pending && <Spinner label="Сар солиж байна" />}
-      {allowEmpty && current && (
-        <button
-          type="button"
-          onClick={() => go(null)}
-          className="h-9 px-1 text-sm text-slate-400 underline decoration-slate-300 transition hover:text-slate-700"
-        >
-          {emptyLabel}
-        </button>
-      )}
     </div>
+  );
+}
+
+/** ‹ › товч — хоёр сар сонгогч хоёулаа хэрэглэнэ */
+export function StepButton({
+  label,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string;
+  disabled: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+      className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-slate-300 bg-white text-base text-slate-500 transition hover:border-slate-400 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-30"
+    >
+      {children}
+    </button>
   );
 }
 

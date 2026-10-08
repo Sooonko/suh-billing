@@ -302,7 +302,7 @@ export default async function AdminInvoicesPage({
             </FilterField>
 
             <FilterField label="Сар">
-              <MonthPicker current={month} />
+              <MonthPicker current={month} marked={months} />
             </FilterField>
 
             <FilterField label="Хайх">
@@ -319,10 +319,10 @@ export default async function AdminInvoicesPage({
           <div id="list-top" className="scroll-mt-20" />
           <ResultSummary
             scope={`${formatBillingMonth(month)}-ын ${CATEGORY_LABEL[category].toLowerCase()}${flag === 'nogrowth'
-                ? ' · заалт нэмэгдээгүй'
-                : flag === 'missing'
-                  ? ' · заалт ороогүй'
-                  : ''
+              ? ' · заалт нэмэгдээгүй'
+              : flag === 'missing'
+                ? ' · заалт ороогүй'
+                : ''
               }`}
             count={visible.length}
           >
@@ -375,7 +375,7 @@ export default async function AdminInvoicesPage({
               СӨХ-ийн сарын хураамж
             </h2>
             <p className="mb-3 mt-0.5 text-sm text-slate-500">
-              Тоолуургүй, бүх айлд ижил. Идэвхтэй БҮХ тоотод нэг дор үүсгэнэ. Дүнг{' '}
+              Бүх тоотод нэг дор үүсгэнэ. Дүнг{' '}
               <Link href="/admin/tariffs" className="underline decoration-slate-300">
                 Тариф
               </Link>{' '}

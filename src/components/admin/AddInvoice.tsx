@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { BUTTON, Field, INPUT, Modal, ModalError, Spinner } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Feedback';
+import { MonthInput } from '@/components/ui/MonthInput';
 import { callApi } from '@/lib/api-client';
 import { formatMnt } from '@/lib/format';
 import { CATEGORY_LABEL, type BillCategory } from '@/lib/types';
@@ -176,13 +177,7 @@ function AddInvoiceDialog({
     >
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Сар">
-          <input
-            required
-            type="month"
-            value={month}
-            onChange={(e) => setMonth(e.target.value)}
-            className={INPUT}
-          />
+          <MonthInput size="field" value={month || null} onChange={(m) => setMonth(m ?? '')} />
         </Field>
 
         <Field label="Тоот">

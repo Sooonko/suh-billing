@@ -2,11 +2,11 @@
 
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTransition } from 'react';
-import { Spinner } from './MonthPicker';
-import { formatBillingMonth } from '@/lib/format';
+import { MonthInput } from '@/components/ui/MonthInput';
+import { Spinner, StepButton } from './MonthPicker';
 
 /**
- * Сарын сонголт: ‹ [2026 оны 9 сар ▾] ›
+ * Сарын сонголт: ‹ [2026 оны 9 сар ▾] › — ЗӨВХӨН дататай сарууд.
  *
  * ЯАГААД СУМТАЙ: админ ихэвчлэн «өмнөх сар» руу л хардаг. Цэс дэлгэж
  * сар хайхын оронд нэг дарахад хүрэхээр болгосон.
@@ -45,47 +45,28 @@ export function MonthStepper({
 
   const index = current ? months.indexOf(current) : -1;
   // months нь БУУРАХААР эрэмбэлэгдсэн: index+1 нь илүү хуучин сар
-  const older = index >= 0 && index + 1 < months.length ? months[index + 1] : null;
+  // «Бүх хугацаа» үед ‹ дарвал хамгийн сүүлийн сар руу орно
+  const older =
+    current === null ? (months[0] ?? null) : index >= 0 && index + 1 < months.length ? months[index + 1] : null;
   const newer = index > 0 ? months[index - 1] : null;
-
-  const arrow =
-    'grid h-9 w-9 place-items-center rounded-lg border border-slate-300 text-slate-500 transition hover:bg-slate-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-30';
 
   return (
     <div className="flex items-center gap-1.5">
-      <button
-        type="button"
-        aria-label="Өмнөх сар"
-        disabled={!older}
-        onClick={() => older && go(hrefFor(older))}
-        className={arrow}
-      >
+      <StepButton label="Өмнөх сар" disabled={!older} onClick={() => older && go(hrefFor(older))}>
         ‹
-      </button>
-
-      <select
-        aria-label="Сар"
-        value={current ?? ''}
-        onChange={(e) => go(hrefFor(e.target.value || null))}
-        className="h-9 rounded-lg border border-slate-300 px-3 text-sm font-medium outline-none focus:border-slate-900"
-      >
-        {allowAll && <option value="">{allLabel}</option>}
-        {months.map((m) => (
-          <option key={m} value={m}>
-            {formatBillingMonth(m)}
-          </option>
-        ))}
-      </select>
-
-      <button
-        type="button"
-        aria-label="Дараах сар"
-        disabled={!newer}
-        onClick={() => newer && go(hrefFor(newer))}
-        className={arrow}
-      >
+      </StepButton>
+      <MonthInput
+        value={current}
+        onChange={(m) => go(hrefFor(m))}
+        // Дата байхгүй сарыг сонгох нь утгагүй — бүдгэрүүлнэ
+        selectable={months}
+        marked={[]}
+        allowEmpty={allowAll}
+        emptyLabel={allLabel}
+      />
+      <StepButton label="Дараах сар" disabled={!newer} onClick={() => newer && go(hrefFor(newer))}>
         ›
-      </button>
+      </StepButton>
       {pending && <Spinner label="Сар солиж байна" />}
     </div>
   );

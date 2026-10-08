@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { MonthInput } from '@/components/ui/MonthInput';
 import { formatMnt } from '@/lib/format';
 import { CATEGORIES, type BillCategory } from '@/lib/types';
 import { readSheets, type SheetData } from '@/lib/read-sheet';
@@ -210,15 +211,15 @@ export function InvoiceImport() {
           <label htmlFor="month" className="mb-1.5 block text-sm font-medium text-slate-700">
             Тооцооны сар
           </label>
-          <input
+          <MonthInput
             id="month"
-            type="month"
-            value={billingMonth}
-            onChange={(e) => {
-              setBillingMonth(e.target.value);
+            size="field"
+            ariaLabel="Тооцооны сар"
+            value={billingMonth || null}
+            onChange={(m) => {
+              setBillingMonth(m ?? '');
               reset();
             }}
-            className="w-full rounded-lg border border-slate-300 px-3.5 py-2.5 outline-none transition focus:border-slate-900 focus:ring-4 focus:ring-slate-900/10"
           />
         </div>
 

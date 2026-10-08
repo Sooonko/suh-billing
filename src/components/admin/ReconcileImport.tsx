@@ -156,8 +156,8 @@ export function ReconcileImport({ accounts }: { accounts: BankAccount[] }) {
                   }}
                   aria-pressed={bankAccountId === account.id}
                   className={`rounded-xl border px-5 py-3 text-left text-sm transition ${bankAccountId === account.id
-                      ? 'border-slate-900 bg-slate-900 text-white'
-                      : 'border-slate-200 text-slate-600 hover:border-slate-300'
+                    ? 'border-slate-900 bg-slate-900 text-white'
+                    : 'border-slate-200 text-slate-600 hover:border-slate-300'
                     }`}
                 >
                   <span className="block font-medium">
@@ -202,7 +202,7 @@ export function ReconcileImport({ accounts }: { accounts: BankAccount[] }) {
             disabled={busy !== null || !bankAccountId}
             className="mt-5 w-full rounded-lg bg-slate-900 px-4 py-3 font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50 sm:w-auto sm:px-8"
           >
-            {busy === 'preview' ? 'Тулгаж байна…' : 'Тулгаж харах (Датаг хадгалахгүй)'}
+            {busy === 'preview' ? 'Тулгаж байна…' : 'Тулгаж харах'}
           </button>
         )}
       </div>

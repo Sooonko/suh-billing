@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useConfirm } from '@/components/ui/Feedback';
+import { MonthInput } from '@/components/ui/MonthInput';
 import { callApi } from '@/lib/api-client';
 import { formatBillingMonth, formatMnt } from '@/lib/format';
 
@@ -73,16 +74,15 @@ export function SohGenerator() {
           <label htmlFor="soh-month" className="mb-1 block text-xs font-medium text-slate-500">
             Тооцооны сар
           </label>
-          <input
+          <MonthInput
             id="soh-month"
-            type="month"
-            value={billingMonth}
-            onChange={(e) => {
-              setBillingMonth(e.target.value);
+            ariaLabel="Тооцооны сар"
+            value={billingMonth || null}
+            onChange={(m) => {
+              setBillingMonth(m ?? '');
               setPreview(null);
               setResult(null);
             }}
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-900"
           />
         </div>
 
