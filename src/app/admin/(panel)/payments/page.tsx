@@ -244,7 +244,8 @@ export default async function AdminPaymentsPage({
             }
           >
             <FilterField label="Сар">
-              <MonthStepper months={months} current={month} allowAll allLabel="Бүх хугацаа" />
+              {/* «Бүх хугацаа» үед month нь '' — сонгогч null хүлээнэ */}
+              <MonthStepper months={months} current={month || null} allowAll allLabel="Бүх хугацаа" />
             </FilterField>
 
             <FilterField label="Данс">

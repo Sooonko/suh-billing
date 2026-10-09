@@ -82,7 +82,7 @@ export function MonthInput({
   const minYear = allowed && years.length ? Math.min(...years) : 2020;
   const maxYear = allowed && years.length ? Math.max(...years) : nowYear + 1;
 
-  const [year, setYear] = useState(() => Number((value ?? selectable?.[0] ?? thisMonth()).slice(0, 4)));
+  const [year, setYear] = useState(() => Number((value || selectable?.[0] || thisMonth()).slice(0, 4)));
 
   const close = useCallback((refocus = true) => {
     setOpen(false);
@@ -92,7 +92,7 @@ export function MonthInput({
   function toggle() {
     if (open) return close();
     // Нээх бүрт сонгосон сарын он руу буцна
-    setYear(Number((value ?? selectable?.[0] ?? thisMonth()).slice(0, 4)));
+    setYear(Number((value || selectable?.[0] || thisMonth()).slice(0, 4)));
     setOpen(true);
   }
 

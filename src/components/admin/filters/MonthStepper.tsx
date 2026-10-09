@@ -47,7 +47,7 @@ export function MonthStepper({
   // months нь БУУРАХААР эрэмбэлэгдсэн: index+1 нь илүү хуучин сар
   // «Бүх хугацаа» үед ‹ дарвал хамгийн сүүлийн сар руу орно
   const older =
-    current === null ? (months[0] ?? null) : index >= 0 && index + 1 < months.length ? months[index + 1] : null;
+    !current ? (months[0] ?? null) : index >= 0 && index + 1 < months.length ? months[index + 1] : null;
   const newer = index > 0 ? months[index - 1] : null;
 
   return (

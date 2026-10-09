@@ -2,6 +2,7 @@ import { FlatBalanceList, type FlatBalance } from '@/components/admin/FlatBalanc
 import { debtForMonth, splitDebtByMonth, type InvoiceLine } from '@/lib/billing/fifo-debt';
 import { formatBillingMonth, formatMnt, shortMonth } from '@/lib/format';
 import { ExcelExportButton } from '@/components/admin/filters/ExcelExportButton';
+import { NoticePdfButton } from '@/components/admin/NoticePdfButton';
 import { FilterField, FilterPanel } from '@/components/admin/filters/FilterPanel';
 import { MonthStepper } from '@/components/admin/filters/MonthStepper';
 import { Pagination } from '@/components/admin/filters/Pagination';
@@ -380,12 +381,20 @@ export default async function AdminFlatsPage({
       */}
       <FilterPanel
         action={
-          <ExcelExportButton
-            filename={`Айлууд ${month ?? 'хуримтлал'}${category ? ` ${CATEGORY_LABEL[category]}` : ''}`}
-            sheetName="Айлууд"
-            headers={exportHeaders}
-            rows={exportRows}
-          />
+          <div className="flex flex-wrap gap-2">
+            <ExcelExportButton
+              filename={`Айлууд ${month ?? 'хуримтлал'}${category ? ` ${CATEGORY_LABEL[category]}` : ''}`}
+              sheetName="Айлууд"
+              headers={exportHeaders}
+              rows={exportRows}
+            />
+            {/*
+              Ангилал, төлөвийн шүүлтээс хамаарахгүй — үлдэгдэлтэй БҮХ айлын
+              БҮХ ангилал. «Бүх сар» үед хамгийн сүүлийн сараар бодно: тэр нь
+              хуримтлагдсан үлдэгдэлтэй яг тэнцэнэ.
+            */}
+            <NoticePdfButton month={month ?? months[0] ?? ''} />
+          </div>
         }
       >
         <FilterField label="Сар">
