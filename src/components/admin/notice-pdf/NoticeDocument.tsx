@@ -6,8 +6,10 @@ import { buildPaymentReference } from '@/lib/payment-reference';
 import { CATEGORY_LABEL } from '@/lib/types';
 
 /**
- * Хаалганд наах мэдэгдэл — A4 хуудсанд A6 хэмжээтэй 4 карт (2×2),
- * хайчлах тасархай зураастай.
+ * Хаалганд наах мэдэгдэл — A4 хуудсанд 105×99 мм хэмжээтэй 6 карт (2×3),
+ * хайчлах тасархай зураастай. A6 (4 карт) хаалганд хэт том байсан.
+ * 3 ангилал + өмнөх үлдэгдэлтэй айл ч багтах ёстой — зай нэмэхдээ
+ * хамгийн их агуулгатай картаар шалгах.
  *
  * ⚠️ Энэ модулийг ЗӨВХӨН браузерт динамикаар татна (`NoticePdfButton`).
  * react-pdf ~1MB тул товч дарах хүртэл хуудасны ачаалалд нэмэгдэхгүй.
@@ -39,72 +41,68 @@ const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || origin).replace(/\/$/, '')
 Font.registerHyphenationCallback((word) => [word]);
 
 const DUE_TEXT = 'Сар бүрийн 20-ны өмнө';
-const PER_PAGE = 4;
+const PER_PAGE = 6;
 const GRAY = '#555';
 
 const s = StyleSheet.create({
   page: { fontFamily: 'Noto', fontSize: 8, color: '#000', flexDirection: 'row', flexWrap: 'wrap' },
-  card: { width: '50%', height: '50%', padding: 14 },
+  card: { width: '50%', height: '33.333%', paddingHorizontal: 12, paddingTop: 8, paddingBottom: 9 },
   cutV: { position: 'absolute', left: '50%', top: 0, bottom: 0, borderLeft: '0.6 dashed #999' },
-  cutH: { position: 'absolute', top: '50%', left: 0, right: 0, borderTop: '0.6 dashed #999' },
+  cutH1: { position: 'absolute', top: '33.333%', left: 0, right: 0, borderTop: '0.6 dashed #999' },
+  cutH2: { position: 'absolute', top: '66.667%', left: 0, right: 0, borderTop: '0.6 dashed #999' },
 
   strip: {
     backgroundColor: '#000',
     color: '#fff',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 4,
-    paddingHorizontal: 8,
+    paddingVertical: 2.5,
+    paddingHorizontal: 7,
     borderRadius: 3,
   },
   stripName: { fontSize: 7, fontWeight: 700 },
   stripTitle: { fontSize: 7, fontWeight: 900, letterSpacing: 0.8 },
 
-  head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 4, marginBottom: 6 },
+  head: { flexDirection: 'row', alignItems: 'center', marginTop: 2, marginBottom: 2 },
   flatRow: { flexDirection: 'row', alignItems: 'baseline' },
-  flatNo: { fontSize: 34, fontWeight: 900, lineHeight: 1 },
-  flatWord: { fontSize: 12, fontWeight: 700, marginLeft: 3 },
-  headRight: { alignItems: 'flex-end' },
-  month: { fontSize: 10, fontWeight: 700 },
-  dueLabel: { fontSize: 6.5, color: GRAY, marginTop: 2 },
-  dueText: { fontSize: 8.5, fontWeight: 900, borderBottom: '1.2 solid #000' },
+  flatNo: { fontSize: 26, fontWeight: 900, lineHeight: 1 },
+  flatWord: { fontSize: 10, fontWeight: 700, marginLeft: 3 },
+  headRight: { flex: 1, alignItems: 'flex-end', marginRight: 7 },
+  month: { fontSize: 9, fontWeight: 700 },
+  dueLabel: { fontSize: 6, color: GRAY, marginTop: 1 },
+  dueText: { fontSize: 8, fontWeight: 900, borderBottom: '1.2 solid #000' },
 
-  block: { border: '1.4 solid #000', borderRadius: 4, paddingVertical: 4, paddingHorizontal: 7, marginBottom: 4 },
+  block: { border: '1.2 solid #000', borderRadius: 3, paddingVertical: 2, paddingHorizontal: 6, marginBottom: 2.5 },
   blockTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  catLabel: { fontSize: 10.5, fontWeight: 900 },
+  catLabel: { fontSize: 9.5, fontWeight: 900 },
   dueBox: { flexDirection: 'row', alignItems: 'baseline' },
   dueCaption: { fontSize: 5.5, color: GRAY, letterSpacing: 0.4, marginRight: 5 },
-  amount: { fontSize: 15, fontWeight: 900, lineHeight: 1.05 },
+  amount: { fontSize: 13, fontWeight: 900, lineHeight: 1.05 },
 
-  table: { marginTop: 3, borderTop: '0.5 solid #bbb', paddingTop: 2 },
-  tr: { flexDirection: 'row', fontSize: 7 },
-  th: { flexDirection: 'row', fontSize: 5.8, color: GRAY },
+  table: { marginTop: 1.5, borderTop: '0.5 solid #bbb', paddingTop: 1 },
+  tr: { flexDirection: 'row', fontSize: 6.8 },
+  th: { flexDirection: 'row', fontSize: 5.5, color: GRAY },
   cName: { width: '34%' },
   cNum: { width: '22%', textAlign: 'right' },
 
-  line: { flexDirection: 'row', justifyContent: 'space-between', fontSize: 7.5, marginTop: 1.5 },
   debtLine: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    fontSize: 7.5,
-    fontWeight: 900,
+    fontSize: 7,
     backgroundColor: '#e6e6e6',
     paddingHorizontal: 3,
-    paddingVertical: 1,
-    marginTop: 1.5,
+    paddingVertical: 0.5,
+    marginTop: 1,
     marginHorizontal: -3,
     borderRadius: 2,
   },
-  pay: { marginTop: 3, fontSize: 6.3, color: '#222' },
+  pay: { marginTop: 1.5, fontSize: 6, color: '#222' },
   payRef: { fontWeight: 700, color: '#000' },
 
-  foot: { position: 'absolute', left: 14, right: 14, bottom: 12, borderTop: '0.8 solid #000', paddingTop: 5, flexDirection: 'row', alignItems: 'center' },
-  footBody: { flex: 1, marginLeft: 8 },
-  webTitle: { fontSize: 8.5, fontWeight: 900 },
-  webText: { fontSize: 6.8, marginTop: 1 },
-  webUrl: { fontSize: 7, fontWeight: 700, marginTop: 1.5 },
-  footText: { fontSize: 6, color: '#222', marginTop: 3 },
+  foot: { position: 'absolute', left: 12, right: 12, bottom: 7, borderTop: '0.8 solid #000', paddingTop: 2 },
+  footText: { fontSize: 6, color: '#222' },
   bold: { fontWeight: 700 },
+  black: { fontWeight: 900 },
 });
 
 /** "MN110015001175205621" → "MN11 0015 0011 7520 5621" */
@@ -156,20 +154,17 @@ function CategoryBlock({ c, flatNumber, month, account }: { c: NoticeCategory; f
         </View>
       )}
 
-      {/* Задаргаа — зөвхөн өмнөх үлдэгдэл байвал. Ганц сарын дүнг давтах нь илүүц. */}
+      {/*
+        Задаргаа — зөвхөн өмнөх үлдэгдэл байвал. Ганц сарын дүнг давтах нь илүүц.
+        Нэг мөрөнд багтаана — 3 ангилал бүгд өртэй айл 99 мм картад багтах ёстой.
+      */}
       {c.previous >= 1 && (
-        <>
-          {c.current >= 1 && (
-            <View style={s.line}>
-              <Text>{`${Number(month.slice(5, 7))} сарын төлбөр`}</Text>
-              <Text>{formatMnt(c.current)}</Text>
-            </View>
-          )}
-          <View style={s.debtLine}>
-            <Text>{`Өмнөх үлдэгдэл${c.previousMonths.length ? ` (${formatMonthList(c.previousMonths)})` : ''}`}</Text>
-            <Text>{formatMnt(c.previous)}</Text>
-          </View>
-        </>
+        <View style={s.debtLine}>
+          <Text>{c.current >= 1 ? `${Number(month.slice(5, 7))} сар: ${formatMnt(c.current)}` : ''}</Text>
+          <Text style={s.black}>
+            {`Өмнөх үлдэгдэл${c.previousMonths.length ? ` (${formatMonthList(c.previousMonths)})` : ''}: ${formatMnt(c.previous)}`}
+          </Text>
+        </View>
       )}
 
       <Text style={s.pay}>
@@ -180,7 +175,7 @@ function CategoryBlock({ c, flatNumber, month, account }: { c: NoticeCategory; f
   );
 }
 
-const QR_SIZE = 50;
+const QR_SIZE = 46;
 
 /**
  * Айлын хуудасны QR — вектор Path болгож зурна.
@@ -230,6 +225,7 @@ function NoticeCard({ n, data }: { n: FlatNotice; data: NoticesPayload }) {
           <Text style={s.dueLabel}>Төлөх хугацаа</Text>
           <Text style={s.dueText}>{DUE_TEXT}</Text>
         </View>
+        <QrCode text={`${SITE_URL}/${n.flatNumber}`} />
       </View>
 
       {n.categories.map((c) => (
@@ -243,23 +239,19 @@ function NoticeCard({ n, data }: { n: FlatNotice; data: NoticesPayload }) {
       ))}
 
       {/*
-        QR + тайлбар. Уншуулахад оршин суугчийн дэлгэц (/197) нээгдэнэ —
-        өр, төлсөн түүх, данс. Цаасан мэдэгдлээс вэб рүү шилжүүлэх зорилготой
-        тул тайлбар нь QR-ын ХАЖУУД, тод бичигдэнэ.
+        QR толгойд, тоотын хажууд — доод талд тусдаа хэсэг болговол 99 мм
+        картад 3 ангилал багтахгүй. Уншуулахад оршин суугчийн дэлгэц (/197)
+        нээгдэнэ — өр, төлсөн түүх, данс.
       */}
       <View style={s.foot}>
-        <QrCode text={`${SITE_URL}/${n.flatNumber}`} />
-        <View style={s.footBody}>
-          <Text style={s.webTitle}>Төлбөрийн мэдээллээ вэбээс харна уу</Text>
-          <Text style={s.webText}>
-            Энэ QR кодыг утасныхаа камераар уншуулж, төлбөрийн мэдээллээ цаашид вэбээс авна уу.
-          </Text>
-          <Text style={s.webUrl}>{`${SITE_URL.replace(/^https?:\/\//, '')}/${n.flatNumber}`}</Text>
-          <Text style={s.footText}>
-            Гүйлгээний утганд <Text style={s.bold}>ТООТОО</Text> заавал бичнэ үү. Лавлах утас:{' '}
-            <Text style={s.bold}>{data.phone}</Text>
-          </Text>
-        </View>
+        <Text style={s.footText}>
+          QR уншуулж эсвэл <Text style={s.bold}>{`${SITE_URL.replace(/^https?:\/\//, '')}/${n.flatNumber}`}</Text> хаягаар
+          төлбөрөө вэбээс харна уу.
+        </Text>
+        <Text style={s.footText}>
+          Гүйлгээний утганд <Text style={s.bold}>ТООТОО</Text> заавал бичнэ үү. Лавлах утас:{' '}
+          <Text style={s.bold}>{data.phone}</Text>
+        </Text>
       </View>
     </View>
   );
@@ -279,7 +271,8 @@ export function NoticeDocument({ data }: { data: NoticesPayload }) {
             <NoticeCard key={n.flatNumber} n={n} data={data} />
           ))}
           <View style={s.cutV} fixed />
-          <View style={s.cutH} fixed />
+          <View style={s.cutH1} fixed />
+          <View style={s.cutH2} fixed />
         </Page>
       ))}
     </Document>
