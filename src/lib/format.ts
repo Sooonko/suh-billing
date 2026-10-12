@@ -35,3 +35,15 @@ export function previousMonth(month: string): string {
   const [year, m] = month.split('-').map(Number);
   return m === 1 ? `${year - 1}-12` : `${year}-${String(m - 1).padStart(2, '0')}`;
 }
+
+/**
+ * Сарын жагсаалт: ['2026-07','2026-08'] → "7, 8 сар". 3-аас олон бол
+ * «5–8 сар» гэж хураана — нарийн мөрөнд багтах ёстой.
+ *
+ * Хаалганы мэдэгдэл ба оршин суугчийн хураангуй ХОЁУЛАА хэрэглэнэ.
+ */
+export function formatMonthList(months: string[]): string {
+  const nums = months.map((m) => Number(m.slice(5, 7)));
+  if (nums.length > 3) return `${nums[0]}–${nums[nums.length - 1]} сар`;
+  return `${nums.join(', ')} сар`;
+}

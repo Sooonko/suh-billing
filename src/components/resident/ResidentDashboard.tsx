@@ -2,9 +2,9 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { formatMnt } from '@/lib/format';
 import { CATEGORIES, type BillCategory, type ResidentDashboardData } from '@/lib/types';
-import { settledBalance, hasDebt as isOwing } from '@/lib/money';
+import { hasDebt as isOwing } from '@/lib/money';
+import { BalanceSummary } from './BalanceSummary';
 import { CategoryCard } from './CategoryCard';
 import { DebtBreakdown } from './DebtBreakdown';
 import { PaymentList } from './PaymentList';
@@ -13,7 +13,8 @@ import { PaymentList } from './PaymentList';
  * Оршин суугчийн үндсэн дэлгэц.
  *
  * Хураангуйг дээр тавьсан шалтгаан: "би хэд төлөх ёстой вэ?" гэдэг нь
- * оршин суугчийн 90% асуулт. Түүнийг таб дарахгүйгээр харуулна.
+ * оршин суугчийн 90% асуулт. Түүнийг таб дарахгүйгээр харуулна
+ * (`BalanceSummary` — ангилал бүр том, нийт нь жижиг).
  *
  * Байршуулалт хоёр өөр:
  *  · Гар утас (lg-ээс доош) — 3 таб, нэг удаад нэг ангилал
@@ -26,26 +27,6 @@ export function ResidentDashboard({ data }: { data: ResidentDashboardData }) {
   const byCategory = new Map(data.categories.map((c) => [c.category, c]));
   const activeState = byCategory.get(active);
   const activeMeta = CATEGORIES.find((c) => c.key === active)!;
-
-  /**
-   * Нийт төлөх дүн — ЗӨВХӨН өртэй ангиллуудын нийлбэр.
-   *
-   * ⚠️ ИЛҮҮ ТӨЛӨЛТИЙГ ХАСАХГҮЙ. Ангилал бүр ӨӨР ДАНСТАЙ тул оршин суугч
-   * цахилгааны илүү төлөлтөөрөө ус дулааны өрөө хаах боломжгүй. Өмнө нь
-   * хасдаг байсан тул 107 тоот «40,150₮ ус дулаанд өртэй, 38,574₮
-   * цахилгаанд илүү» байхад «нийт төлөх 1,576₮» гэж худал харуулсан —
-   * тэр хүн 40,150₮ шилжүүлэх ёстой.
-   *
-   * 50₮-өөс бага үлдэгдэл нь аравтын бөөрөнхийллийн үлдэц (money.ts).
-   */
-  const balances = data.categories.map((c) => settledBalance(Number(c.balance)));
-  const total = balances.reduce((sum, b) => (b > 0 ? sum + b : sum), 0);
-  /** Илүү төлөлт ТУСАД НЬ — дараагийн сард зарцуулагдана */
-  const overpaid = balances.reduce((sum, b) => (b < 0 ? sum - b : sum), 0);
-
-  /** Үлдэгдлийн тэмдгээс хамаарсан өнгө — нэг эх сурвалжаас удирдана */
-  const tone = (value: number) =>
-    value > 0 ? 'text-red-700' : value < 0 ? 'text-blue-700' : 'text-emerald-700';
 
   return (
     <div>
@@ -68,58 +49,8 @@ export function ResidentDashboard({ data }: { data: ResidentDashboardData }) {
         </Link>
       </header>
 
-      {/* ── Хураангуй: нийт дүн + 3 ангиллын зэрэгцүүлэл ─────────────────── */}
-      <section
-        aria-label="Төлбөрийн хураангуй"
-        className="mb-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm md:mb-7 md:flex md:items-stretch"
-      >
-        <div className="px-5 pb-4 pt-5 md:flex-1 md:px-7 md:py-7">
-          <p className="text-sm font-medium text-slate-500 md:text-base">
-            {total > 0 ? 'Нийт төлөх дүн' : overpaid > 0 ? 'Нийт илүү төлсөн' : 'Төлбөрийн үлдэгдэл'}
-          </p>
-          <p
-            className={`mt-1 text-4xl font-bold tabular-nums tracking-tight md:text-5xl ${total > 0 ? 'text-red-700' : overpaid > 0 ? 'text-blue-700' : 'text-emerald-700'
-              }`}
-          >
-            {formatMnt(total > 0 ? total : overpaid)}
-          </p>
-          {total === 0 && overpaid === 0 && (
-            <p className="mt-1 text-sm text-emerald-700 md:text-base">Бүх төлбөр цэвэр байна 🎉</p>
-          )}
-          {/*
-            Өртэй БА илүү төлсөн зэрэг байж болно — данс тусдаа учраас.
-            Илүүг нь дурдахгүй бол «би илүү төлсөн шүү дээ» гэж эргэлзэнэ.
-          */}
-          {total > 0 && overpaid > 0 && (
-            <p className="mt-1.5 text-sm text-blue-700 md:text-base">
-
-            </p>
-          )}
-        </div>
-
-        {/*
-          Гар утсан дээр дарвал тухайн таб руу шилжинэ. Веб дээр 3 карт хэдийнэ
-          зэрэгцэж харагддаг тул дарах шаардлагагүй → pointer-events унтраана.
-        */}
-        <div className="grid grid-cols-3 divide-x divide-slate-100 border-t border-slate-100 md:w-80 md:shrink-0 md:border-l md:border-t-0">
-          {CATEGORIES.map(({ key, label }) => {
-            const balance = settledBalance(Number(byCategory.get(key)?.balance ?? 0));
-            return (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setActive(key)}
-                className="px-2 py-3 text-center transition hover:bg-slate-50 md:py-5 lg:pointer-events-none lg:cursor-default lg:hover:bg-transparent"
-              >
-                <p className="truncate text-[11px] leading-tight text-slate-400 md:text-xs">{label}</p>
-                <p className={`mt-1 text-sm font-bold tabular-nums md:text-base ${tone(balance)}`}>
-                  {formatMnt(balance)}
-                </p>
-              </button>
-            );
-          })}
-        </div>
-      </section>
+      {/* ── Хураангуй: ангилал бүр том, нийт нь жижиг ─────────────────────── */}
+      <BalanceSummary byCategory={byCategory} debts={data.debts} onSelect={setActive} />
 
       {/* Аль сараас хойш өртэй вэ */}
       <DebtBreakdown debts={data.debts} />

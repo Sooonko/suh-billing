@@ -1,6 +1,6 @@
 import { Document, Font, Page, Path, StyleSheet, Svg, Text, View } from '@react-pdf/renderer';
 import QRCode from 'qrcode';
-import { formatBillingMonth, formatMnt, formatReading } from '@/lib/format';
+import { formatBillingMonth, formatMnt, formatMonthList, formatReading } from '@/lib/format';
 import type { FlatNotice, NoticeCategory, NoticesPayload } from '@/lib/notices';
 import { buildPaymentReference } from '@/lib/payment-reference';
 import { CATEGORY_LABEL } from '@/lib/types';
@@ -65,18 +65,15 @@ const s = StyleSheet.create({
   flatNo: { fontSize: 34, fontWeight: 900, lineHeight: 1 },
   flatWord: { fontSize: 12, fontWeight: 700, marginLeft: 3 },
   headRight: { alignItems: 'flex-end' },
-  headSide: { flexDirection: 'row', alignItems: 'flex-end' },
-  qrBox: { alignItems: 'center', marginLeft: 7 },
-  qrCaption: { fontSize: 5, color: GRAY, marginTop: 1 },
   month: { fontSize: 10, fontWeight: 700 },
   dueLabel: { fontSize: 6.5, color: GRAY, marginTop: 2 },
   dueText: { fontSize: 8.5, fontWeight: 900, borderBottom: '1.2 solid #000' },
 
-  block: { border: '1.4 solid #000', borderRadius: 4, paddingVertical: 5, paddingHorizontal: 7, marginBottom: 5 },
+  block: { border: '1.4 solid #000', borderRadius: 4, paddingVertical: 4, paddingHorizontal: 7, marginBottom: 4 },
   blockTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   catLabel: { fontSize: 10.5, fontWeight: 900 },
-  dueBox: { alignItems: 'flex-end' },
-  dueCaption: { fontSize: 5.5, color: GRAY, letterSpacing: 0.4 },
+  dueBox: { flexDirection: 'row', alignItems: 'baseline' },
+  dueCaption: { fontSize: 5.5, color: GRAY, letterSpacing: 0.4, marginRight: 5 },
   amount: { fontSize: 15, fontWeight: 900, lineHeight: 1.05 },
 
   table: { marginTop: 3, borderTop: '0.5 solid #bbb', paddingTop: 2 },
@@ -101,20 +98,17 @@ const s = StyleSheet.create({
   pay: { marginTop: 3, fontSize: 6.3, color: '#222' },
   payRef: { fontWeight: 700, color: '#000' },
 
-  foot: { position: 'absolute', left: 14, right: 14, bottom: 12, borderTop: '0.8 solid #000', paddingTop: 3 },
-  footText: { fontSize: 6.5, textAlign: 'center' },
+  foot: { position: 'absolute', left: 14, right: 14, bottom: 12, borderTop: '0.8 solid #000', paddingTop: 5, flexDirection: 'row', alignItems: 'center' },
+  footBody: { flex: 1, marginLeft: 8 },
+  webTitle: { fontSize: 8.5, fontWeight: 900 },
+  webText: { fontSize: 6.8, marginTop: 1 },
+  webUrl: { fontSize: 7, fontWeight: 700, marginTop: 1.5 },
+  footText: { fontSize: 6, color: '#222', marginTop: 3 },
   bold: { fontWeight: 700 },
 });
 
 /** "MN110015001175205621" → "MN11 0015 0011 7520 5621" */
 const groupIban = (v: string) => v.replace(/\s+/g, '').replace(/(.{4})/g, '$1 ').trim();
-
-/** ['2026-07','2026-08'] → "7, 8 сар"; олон бол «5–8 сар» */
-function monthList(months: string[]): string {
-  const nums = months.map((m) => Number(m.slice(5, 7)));
-  if (nums.length > 3) return `${nums[0]}–${nums[nums.length - 1]} сар`;
-  return `${nums.join(', ')} сар`;
-}
 
 const diff = (pair: [number | null, number | null]) =>
   pair[0] === null || pair[1] === null ? null : Math.round((pair[1] - pair[0]) * 100) / 100;
@@ -172,7 +166,7 @@ function CategoryBlock({ c, flatNumber, month, account }: { c: NoticeCategory; f
             </View>
           )}
           <View style={s.debtLine}>
-            <Text>{`Өмнөх үлдэгдэл${c.previousMonths.length ? ` (${monthList(c.previousMonths)})` : ''}`}</Text>
+            <Text>{`Өмнөх үлдэгдэл${c.previousMonths.length ? ` (${formatMonthList(c.previousMonths)})` : ''}`}</Text>
             <Text>{formatMnt(c.previous)}</Text>
           </View>
         </>
@@ -186,7 +180,7 @@ function CategoryBlock({ c, flatNumber, month, account }: { c: NoticeCategory; f
   );
 }
 
-const QR_SIZE = 44;
+const QR_SIZE = 50;
 
 /**
  * Айлын хуудасны QR — вектор Path болгож зурна.
@@ -231,17 +225,10 @@ function NoticeCard({ n, data }: { n: FlatNotice; data: NoticesPayload }) {
           <Text style={s.flatNo}>{n.flatNumber}</Text>
           <Text style={s.flatWord}>тоот</Text>
         </View>
-        <View style={s.headSide}>
-          <View style={s.headRight}>
-            <Text style={s.month}>{formatBillingMonth(data.month)}</Text>
-            <Text style={s.dueLabel}>Төлөх хугацаа</Text>
-            <Text style={s.dueText}>{DUE_TEXT}</Text>
-          </View>
-          {/* Уншуулахад оршин суугчийн дэлгэц (/197) нээгдэнэ — өр, төлсөн түүх, данс */}
-          <View style={s.qrBox}>
-            <QrCode text={`${SITE_URL}/${n.flatNumber}`} />
-            <Text style={s.qrCaption}>Уншуулж харах</Text>
-          </View>
+        <View style={s.headRight}>
+          <Text style={s.month}>{formatBillingMonth(data.month)}</Text>
+          <Text style={s.dueLabel}>Төлөх хугацаа</Text>
+          <Text style={s.dueText}>{DUE_TEXT}</Text>
         </View>
       </View>
 
@@ -255,11 +242,24 @@ function NoticeCard({ n, data }: { n: FlatNotice; data: NoticesPayload }) {
         />
       ))}
 
+      {/*
+        QR + тайлбар. Уншуулахад оршин суугчийн дэлгэц (/197) нээгдэнэ —
+        өр, төлсөн түүх, данс. Цаасан мэдэгдлээс вэб рүү шилжүүлэх зорилготой
+        тул тайлбар нь QR-ын ХАЖУУД, тод бичигдэнэ.
+      */}
       <View style={s.foot}>
-        <Text style={s.footText}>
-          Гүйлгээний утганд <Text style={s.bold}>ТООТОО</Text> заавал бичнэ үү. Ангилал бүрийг өөрийн дансанд төлнө.
-        </Text>
-        <Text style={[s.footText, s.bold]}>Лавлах утас: {data.phone}</Text>
+        <QrCode text={`${SITE_URL}/${n.flatNumber}`} />
+        <View style={s.footBody}>
+          <Text style={s.webTitle}>Төлбөрийн мэдээллээ вэбээс харна уу</Text>
+          <Text style={s.webText}>
+            Энэ QR кодыг утасныхаа камераар уншуулж, төлбөрийн мэдээллээ цаашид вэбээс авна уу.
+          </Text>
+          <Text style={s.webUrl}>{`${SITE_URL.replace(/^https?:\/\//, '')}/${n.flatNumber}`}</Text>
+          <Text style={s.footText}>
+            Гүйлгээний утганд <Text style={s.bold}>ТООТОО</Text> заавал бичнэ үү. Лавлах утас:{' '}
+            <Text style={s.bold}>{data.phone}</Text>
+          </Text>
+        </View>
       </View>
     </View>
   );
