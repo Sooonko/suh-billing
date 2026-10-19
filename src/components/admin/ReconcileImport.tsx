@@ -6,6 +6,7 @@ import { useConfirm } from '@/components/ui/Feedback';
 import { callApi } from '@/lib/api-client';
 import { formatMnt } from '@/lib/format';
 import { readSheetRows } from '@/lib/read-sheet';
+import { RECIPIENT_LABEL, type NewTransfer } from '@/lib/transfers';
 import { CATEGORY_LABEL, type BankAccount, type BillCategory } from '@/lib/types';
 
 /**
@@ -53,8 +54,12 @@ interface Preview {
     needsReview: number;
     needsDecision: number;
     totalAmount: number;
+    /** Шинээр бүртгэгдэх шилжүүлэг (давхардсаныг хасаад) */
+    transfers: number;
   };
   transactions: PreviewTxn[];
+  /** Зарлагын мөрөөс танисан улсын байгууллагын шилжүүлэг */
+  transfers: (NewTransfer & { isDuplicate: boolean })[];
   skipped: { rowIndex: number; description: string; reason: string }[];
 }
 
@@ -63,6 +68,8 @@ interface CommitResult {
   duplicatesSkipped: number;
   autoMatched: number;
   needsReview: number;
+  transfersImported: number;
+  transfersDuplicate: number;
 }
 
 export function ReconcileImport({ accounts }: { accounts: BankAccount[] }) {
@@ -185,8 +192,9 @@ export function ReconcileImport({ accounts }: { accounts: BankAccount[] }) {
           />
           <p className="mt-2 text-xs text-slate-500">
             Толгой мөрөнд <span className="font-semibold">Орлого</span> ба{' '}
-            <span className="font-semibold">Гүйлгээний утга</span> багана байх ёстой. Зарлагын мөрийг
-            систем өөрөө алгасна.
+            <span className="font-semibold">Гүйлгээний утга</span> багана байх ёстой. Зарлагаас зөвхөн
+            улсын байгууллагын шилжүүлгийг (утганд 4044820 · 25010490 · 11619) бүртгэнэ, бусдыг
+            алгасна.
           </p>
           {fileName && rows && (
             <p className="mt-2 text-sm text-slate-600">
@@ -217,6 +225,7 @@ export function ReconcileImport({ accounts }: { accounts: BankAccount[] }) {
       {preview && (() => {
         // Шинээр бүртгэгдэх мөрийн тоо. Давхардсаныг оруулахгүй.
         const newRows = preview.summary.autoMatched + preview.summary.needsReview;
+        const newTransfers = preview.summary.transfers;
         return (
           <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="mb-4 font-semibold text-slate-900">
@@ -301,8 +310,32 @@ export function ReconcileImport({ accounts }: { accounts: BankAccount[] }) {
               </div>
             </dl>
 
+            {preview.transfers.length > 0 && (
+              <div className="mb-4 rounded-lg border border-indigo-200 bg-indigo-50/60 p-4">
+                <p className="text-sm font-semibold text-indigo-900">
+                  🏛 Улсын байгууллагад шилжүүлсэн — {newTransfers} шинэ
+                  {preview.transfers.length > newTransfers &&
+                    ` · ${preview.transfers.length - newTransfers} аль хэдийн бүртгэгдсэн`}
+                </p>
+                <ul className="mt-2 space-y-0.5 text-xs text-indigo-900">
+                  {preview.transfers.map((t) => (
+                    <li key={t.rowIndex} className={`flex gap-3 ${t.isDuplicate ? 'opacity-50' : ''}`}>
+                      <span className="tabular-nums">{t.transferDate}</span>
+                      <span className="w-40 shrink-0 font-medium">{RECIPIENT_LABEL[t.recipient]}</span>
+                      <span className="w-28 shrink-0 text-right font-semibold tabular-nums">
+                        {formatMnt(t.amount)}
+                      </span>
+                      <span className="truncate" title={t.description}>
+                        {t.isDuplicate ? 'давхардсан' : t.description}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             {/* Бүх мөр давхардсан — энэ хуулгыг аль хэдийн оруулсан байна */}
-            {newRows === 0 && preview.summary.duplicates > 0 && (
+            {newRows === 0 && newTransfers === 0 && preview.summary.duplicates > 0 && (
               <div className="mb-4 rounded-lg border-2 border-amber-400 bg-amber-50 p-4">
                 <p className="font-bold text-amber-900">
                   ⚠️ Энэ хуулгыг АЛЬ ХЭДИЙН оруулсан байна
@@ -434,6 +467,7 @@ export function ReconcileImport({ accounts }: { accounts: BankAccount[] }) {
                     details: [
                       ['Данс', preview.account.displayName],
                       ['Шинэ гүйлгээ', String(newRows)],
+                      ...(newTransfers ? [['Шилжүүлэг', String(newTransfers)] as [string, string]] : []),
                     ],
                     warning: 'Буруу данс сонгосон бол төлбөр буруу ангилалд орно.',
                     confirmLabel: 'Бүртгэх',
@@ -441,14 +475,16 @@ export function ReconcileImport({ accounts }: { accounts: BankAccount[] }) {
                   });
                   if (ok) send('commit');
                 }}
-                disabled={busy !== null || newRows === 0}
+                disabled={busy !== null || newRows + newTransfers === 0}
                 className="rounded-lg bg-emerald-600 px-8 py-3 font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-50"
               >
                 {busy === 'commit'
                   ? 'Бүртгэж байна…'
-                  : newRows === 0
+                  : newRows + newTransfers === 0
                     ? 'Бүртгэх шинэ гүйлгээ алга'
-                    : `«${preview.account.displayName}» данс руу ${newRows} гүйлгээ бүртгэх`}
+                    : newRows === 0
+                      ? `${newTransfers} шилжүүлэг бүртгэх`
+                      : `«${preview.account.displayName}» данс руу ${newRows} гүйлгээ бүртгэх`}
               </button>
               <button
                 type="button"
@@ -483,6 +519,17 @@ export function ReconcileImport({ accounts }: { accounts: BankAccount[] }) {
               <dt>Давхардсан тул алгассан</dt>
               <dd className="font-bold tabular-nums">{result.duplicatesSkipped}</dd>
             </div>
+            {(result.transfersImported > 0 || result.transfersDuplicate > 0) && (
+              <div className="flex justify-between">
+                <dt>Улсын байгууллагад шилжүүлсэн</dt>
+                <dd className="font-bold tabular-nums">
+                  {result.transfersImported}
+                  {result.transfersDuplicate > 0 && (
+                    <span className="font-normal"> (+{result.transfersDuplicate} давхардсан)</span>
+                  )}
+                </dd>
+              </div>
+            )}
           </dl>
           {result.needsReview > 0 && (
             <p className="mt-3 text-sm text-emerald-900">

@@ -1,8 +1,10 @@
 import Link from 'next/link';
-import { formatMnt } from '@/lib/format';
+import { TransferLedgerImport } from '@/components/admin/TransferLedgerImport';
+import { formatBillingMonth, formatMnt } from '@/lib/format';
 import { hasDebt, hasOverpaid } from '@/lib/money';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { fetchAllRows } from '@/lib/supabase/fetch-all';
+import { RECIPIENT_LABEL, RECIPIENTS, type TransferRecipient } from '@/lib/transfers';
 import { CATEGORIES, type BillCategory } from '@/lib/types';
 
 /** Админ дата бичих тул кэшлэхгүй — үргэлж шинэ тоо харуулна */
@@ -91,6 +93,213 @@ async function loadStats() {
   return { flats, needsWork: unmatched + partial, txns, summary };
 }
 
+interface TransferRow {
+  recipient: TransferRecipient;
+  transfer_date: string;
+  amount: number;
+  description: string | null;
+  note: string | null;
+}
+
+/**
+ * Улсын байгууллага руу шилжүүлсэн мөнгө.
+ *
+ * Хүснэгт үүсээгүй (schema.sql-ийг дахин ажиллуулаагүй) бол null — самбар
+ * бүхэлдээ унахгүй, зөвхөн энэ хэсэг сануулга харуулна.
+ */
+async function loadTransfers(): Promise<TransferRow[] | null> {
+  const db = createAdminClient();
+  try {
+    return await fetchAllRows<TransferRow>((from, to) =>
+      db
+        .from('utility_transfers')
+        .select('recipient, transfer_date, amount, description, note')
+        .order('transfer_date', { ascending: false })
+        .order('id')
+        .range(from, to),
+    );
+  } catch {
+    return null;
+  }
+}
+
+const sumOf = (items: TransferRow[]) => items.reduce((acc, t) => acc + Number(t.amount), 0);
+
+/** Сар бүрт шууд харагдах тоо — үүнээс хуучныг нэг хураасан хэсэгт */
+const VISIBLE_MONTHS = 12;
+
+/** Сарын мөр болон толгойн багана — нэг загвар, тэгш зэрэгцэнэ */
+const MONTH_GRID = 'grid grid-cols-[1fr_auto] items-center gap-x-4 sm:grid-cols-[10rem_repeat(3,minmax(0,1fr))_8rem]';
+
+/** Нэг сарын мөр — дарахад тухайн сарын шилжүүлгүүд хүлээн авагчаар нээгдэнэ */
+function MonthRow({ month, items }: { month: string; items: TransferRow[] }) {
+  return (
+    <details className="group border-t border-slate-100 first:border-t-0">
+      <summary className={`${MONTH_GRID} cursor-pointer list-none px-4 py-3 hover:bg-slate-50 [&::-webkit-details-marker]:hidden`}>
+        <span className="font-medium text-slate-900">
+          <span className="mr-1.5 inline-block text-slate-400 transition group-open:rotate-90">›</span>
+          {formatBillingMonth(month)}
+        </span>
+        {RECIPIENTS.map(({ key }) => {
+          const list = items.filter((t) => t.recipient === key);
+          return (
+            <span key={key} className="hidden text-right tabular-nums sm:block">
+              {list.length ? (
+                <>
+                  <span className="text-slate-800">{formatMnt(sumOf(list))}</span>
+                  <span className="block text-[11px] text-slate-400">{list.length} удаа</span>
+                </>
+              ) : (
+                <span className="text-slate-300">—</span>
+              )}
+            </span>
+          );
+        })}
+        <span className="text-right font-bold tabular-nums text-slate-900">{formatMnt(sumOf(items))}</span>
+      </summary>
+
+      <div className="grid gap-4 bg-slate-50/70 px-4 py-3 sm:grid-cols-3">
+        {RECIPIENTS.map(({ key }) => {
+          // Сарын дотор огноогоор өсөхөөр — хуулгатай тулгахад амар
+          const list = items
+            .filter((t) => t.recipient === key)
+            .sort((a, b) => a.transfer_date.localeCompare(b.transfer_date));
+          if (!list.length) return null;
+          return (
+            <div key={key}>
+              <p className="flex justify-between border-b border-slate-200 pb-1 text-xs font-semibold text-slate-600">
+                <span>{RECIPIENT_LABEL[key]}</span>
+                <span className="tabular-nums">{formatMnt(sumOf(list))}</span>
+              </p>
+              <ul className="mt-1 space-y-0.5 text-sm">
+                {list.map((t, i) => (
+                  <li key={i} className="flex justify-between gap-3">
+                    <span className="tabular-nums text-slate-500">
+                      {Number(t.transfer_date.slice(5, 7))}/{Number(t.transfer_date.slice(8, 10))}
+                      {t.note && (
+                        <span className="ml-1.5 rounded bg-indigo-100 px-1 text-[10px] font-medium text-indigo-800" title={t.note}>
+                          тэмдэглэлтэй
+                        </span>
+                      )}
+                    </span>
+                    <span className="tabular-nums text-slate-800">{formatMnt(Number(t.amount))}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })}
+      </div>
+    </details>
+  );
+}
+
+function TransfersSection({ transfers }: { transfers: TransferRow[] | null }) {
+  if (transfers === null) {
+    return (
+      <section>
+        <h2 className="mb-3 text-lg font-bold tracking-tight text-slate-900">Улсын байгууллагад шилжүүлсэн</h2>
+        <p className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          utility_transfers хүснэгт олдсонгүй. Supabase SQL Editor дээр supabase/schema.sql-ийг дахин
+          ажиллуулна уу.
+        </p>
+      </section>
+    );
+  }
+
+  const totals = RECIPIENTS.map(({ key }) => {
+    const list = transfers.filter((t) => t.recipient === key);
+    return {
+      key,
+      count: list.length,
+      total: sumOf(list),
+      // Тэмдэглэлтэй хэсэг (Орхоны шугуйн өр г.м) — нийтэд ОРСОН, тусад нь харуулна
+      notes: [...new Set(list.map((t) => t.note).filter(Boolean))].map((note) => ({
+        note: note as string,
+        amount: sumOf(list.filter((t) => t.note === note)),
+      })),
+      last: list[0]?.transfer_date ?? null,
+    };
+  });
+  const total = sumOf(transfers);
+
+  // Сараар бүлэглэнэ — шинэ нь эхэндээ (transfers аль хэдийн огноогоор буурсан)
+  const byMonth = new Map<string, TransferRow[]>();
+  for (const t of transfers) {
+    const month = t.transfer_date.slice(0, 7);
+    byMonth.set(month, [...(byMonth.get(month) ?? []), t]);
+  }
+  const months = [...byMonth.entries()];
+  const recent = months.slice(0, VISIBLE_MONTHS);
+  const older = months.slice(VISIBLE_MONTHS);
+
+  return (
+    <section className="space-y-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-lg font-bold tracking-tight text-slate-900">Улсын байгууллагад шилжүүлсэн</h2>
+        <span className="text-sm text-slate-500">
+          Нийт <span className="font-bold tabular-nums text-slate-900">{formatMnt(total)}</span>
+          {transfers.length > 0 && ` · ${transfers.length} гүйлгээ`}
+        </span>
+      </div>
+
+      {/* ── Хүлээн авагч бүрийн нийт ── */}
+      <div className="grid gap-3 sm:grid-cols-3">
+        {totals.map((row) => (
+          <div key={row.key} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{RECIPIENT_LABEL[row.key]}</p>
+            <p className="mt-1 text-2xl font-bold tabular-nums tracking-tight text-slate-900">
+              {row.total === 0 ? '—' : formatMnt(row.total)}
+            </p>
+            <p className="mt-0.5 text-xs text-slate-500">
+              {row.count} гүйлгээ{row.last && ` · сүүлд ${row.last}`}
+            </p>
+            {row.notes.map((n) => (
+              <p key={n.note} className="mt-2 rounded-md bg-indigo-50 px-2 py-1 text-xs text-indigo-800">
+                үүнээс {n.note}: <span className="font-semibold tabular-nums">{formatMnt(n.amount)}</span>
+              </p>
+            ))}
+          </div>
+        ))}
+      </div>
+
+      {/* ── Сараар ── */}
+      {months.length > 0 && (
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div
+            className={`${MONTH_GRID} border-b border-slate-200 bg-slate-50 px-4 py-2.5 text-xs font-medium uppercase tracking-wide text-slate-500`}
+          >
+            <span>Сар</span>
+            {RECIPIENTS.map(({ key }) => (
+              <span key={key} className="hidden text-right sm:block">
+                {RECIPIENT_LABEL[key].replace(/\s*\(.*\)/, '')}
+              </span>
+            ))}
+            <span className="text-right">Нийт</span>
+          </div>
+
+          {recent.map(([month, items]) => (
+            <MonthRow key={month} month={month} items={items} />
+          ))}
+
+          {older.length > 0 && (
+            <details className="border-t border-slate-200">
+              <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-slate-600 hover:bg-slate-50">
+                Өмнөх {older.length} сар
+              </summary>
+              {older.map(([month, items]) => (
+                <MonthRow key={month} month={month} items={items} />
+              ))}
+            </details>
+          )}
+        </div>
+      )}
+
+      <TransferLedgerImport />
+    </section>
+  );
+}
+
 function StatCard({
   label,
   value,
@@ -122,7 +331,7 @@ function StatCard({
 }
 
 export default async function AdminDashboardPage() {
-  const { flats, needsWork, txns, summary } = await loadStats();
+  const [{ flats, needsWork, txns, summary }, transfers] = await Promise.all([loadStats(), loadTransfers()]);
 
   const total = summary.reduce(
     (acc, row) => ({
@@ -237,6 +446,8 @@ export default async function AdminDashboardPage() {
           төлөлттэйг нөхөж хасаагүй, тиймээс цуглуулах ёстой жинхэнэ дүн.
         </p>
       </section>
+
+      <TransfersSection transfers={transfers} />
 
       {/* ── Шуурхай үйлдэл ──────────────────────────────────────────────── */}
       <div className="grid gap-4 md:grid-cols-3">

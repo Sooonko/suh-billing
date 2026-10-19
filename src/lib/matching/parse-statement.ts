@@ -108,6 +108,27 @@ export function parseDate(value: unknown): string | null {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
+/**
+ * Мөрийн орлого, зарлага.
+ *
+ * Орлого/Зарлага тусдаа багана байвал тэрийг, үгүй бол нэг баганын
+ * ТЭМДГЭЭР ялгана (эерэг = орлого, сөрөг = зарлага).
+ */
+export function rowAmounts(
+  row: RawRow,
+  columns: Partial<Record<ColumnKey, string>>,
+): { credit: number; debit: number } {
+  const hasSplitColumns = Boolean(columns.credit || columns.debit);
+  if (!hasSplitColumns) {
+    const signed = columns.amount ? parseAmount(row[columns.amount]) : 0;
+    return { credit: Math.max(signed, 0), debit: Math.max(-signed, 0) };
+  }
+  return {
+    credit: columns.credit ? parseAmount(row[columns.credit]) : 0,
+    debit: columns.debit ? parseAmount(row[columns.debit]) : 0,
+  };
+}
+
 /** Давхардал таних түлхүүр. Нэг хуулгыг 100 удаа оруулсан ч давхардахгүй. */
 export async function dedupeHash(parts: {
   date: string;
@@ -170,21 +191,7 @@ export async function parseStatement(
     const rowIndex = index + 2; // Excel дээрх мөрийн дугаар (1 нь толгой)
     const description = String(columns.description ? (row[columns.description] ?? '') : '').trim();
 
-    // Орлого/Зарлага тусдаа багана байвал тэрийг, үгүй бол нэг баганын
-    // ТЭМДГЭЭР ялгана (эерэг = орлого, сөрөг = зарлага).
-    const hasSplitColumns = Boolean(columns.credit || columns.debit);
-    const signed = !hasSplitColumns && columns.amount ? parseAmount(row[columns.amount]) : 0;
-
-    const credit = hasSplitColumns
-      ? columns.credit
-        ? parseAmount(row[columns.credit])
-        : 0
-      : Math.max(signed, 0);
-    const debit = hasSplitColumns
-      ? columns.debit
-        ? parseAmount(row[columns.debit])
-        : 0
-      : Math.max(-signed, 0);
+    const { credit, debit } = rowAmounts(row, columns);
 
     // ── Зарлага мөрийг бүрэн алгасана ────────────────────────────────────────
     if (credit <= 0) {

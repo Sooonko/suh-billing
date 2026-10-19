@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { gridToRows } from '@/lib/read-sheet';
 import { dedupeHash, detectColumns, parseDate, parseStatement } from './parse-statement';
 
 /**
@@ -171,4 +172,27 @@ async function timezoneChecks() {
   console.log(`\n${ok}/${SAMPLES.length + 1} цагийн бүсийн тохиолдол зөв`);
 }
 
-dedupeChecks().then(timezoneChecks);
+/**
+ * ── Толгойн дээрх мэдээллийн мөр ─────────────────────────────────────────
+ *
+ * Банкны хуулгын 1-р мөр нь «Хуулганы огноо | 2026-10-18 | Харилцагчийн
+ * нэр | … | IBAN | …» — «огноо» агуулж, толгойноос олон нүдтэй тул толгой
+ * гэж андуурагдаж байв. Админ эхний мөрийг гараар устгаж оруулдаг байсан.
+ */
+async function metadataRowCheck() {
+  const grid: unknown[][] = [
+    ['Хуулганы огноо', '2026-10-18', 'ДАНСНЫ ХУУЛГА', 'Харилцагчийн нэр', 'ПИЙС ', 'Гүйлгээний огноо',
+      '2026-10-15 - 2026-10-18', 'Дансны дугаар', '1175205622 [MNT]', 'IBAN', 'MN81 0015 0011 7520 5622'],
+    ['Гүйлгээний огноо', 'Эхний үлдэгдэл', 'Зарлага', 'Орлого', 'Эцсийн үлдэгдэл', 'Гүйлгээний утга', 'Харьцсан данс', '', '', '', ''],
+    ['2026-10-15T12:34:44', 3600191.16, '', 35000, 3635191.16, '2-240 ТООТ СӨХ 10-Р САР', '102900370491', '', '', '', ''],
+    ['2026-10-15T13:37:41', 3635191.16, 5000, '', 3630191.16, 'Шимтгэл', '', '', '', '', ''],
+  ];
+  const { rows, headerRow } = gridToRows(grid);
+  const result = await parseStatement(rows, validFlats);
+  const pass = headerRow === 2 && result.transactions.length === 1 && result.transactions[0].flatNumber === 240;
+  console.log(`
+${pass ? '✅' : '❌'} Толгойн дээрх мэдээллийн мөрийг алгасна`);
+  console.log(`   Толгой: ${headerRow}-р мөр (хүлээсэн 2) · бүртгэх ${result.transactions.length} (хүлээсэн 1)`);
+}
+
+dedupeChecks().then(timezoneChecks).then(metadataRowCheck);

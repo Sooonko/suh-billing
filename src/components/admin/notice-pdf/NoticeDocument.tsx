@@ -1,15 +1,20 @@
 import { Document, Font, Page, Path, StyleSheet, Svg, Text, View } from '@react-pdf/renderer';
 import QRCode from 'qrcode';
-import { formatBillingMonth, formatMnt, formatMonthList, formatReading } from '@/lib/format';
+import { formatBillingMonth, formatMnt, formatMonthList } from '@/lib/format';
 import type { FlatNotice, NoticeCategory, NoticesPayload } from '@/lib/notices';
 import { buildPaymentReference } from '@/lib/payment-reference';
 import { CATEGORY_LABEL } from '@/lib/types';
 
 /**
- * Хаалганд наах мэдэгдэл — A4 хуудсанд 105×99 мм хэмжээтэй 6 карт (2×3),
- * хайчлах тасархай зураастай. A6 (4 карт) хаалганд хэт том байсан.
- * 3 ангилал + өмнөх үлдэгдэлтэй айл ч багтах ёстой — зай нэмэхдээ
- * хамгийн их агуулгатай картаар шалгах.
+ * Хаалганд наах мэдэгдэл — A4 хуудсанд 2 багана, 105 мм өргөн карт,
+ * хайчлах тасархай зураастай. Картын өндөр нь айлын ангиллын тооноос
+ * хамаарна — тогтмол сүлжээ (2×4) 1 ангилалтай айлд хагас хуудас хоосон
+ * үлдээж байв. Багана бүрийг дээрээс доош дүүргэнэ.
+ *
+ * ⚠️ Өндрийг урьдчилан бодож байрлуулдаг тул карт доторх бүх мөр ТОГТМОЛ
+ * өндөртэй (`H`). Мөр нэмэх/өөрчлөхдөө `H`-г заавал засна — эс бөгөөс
+ * карт хуудаснаас хална. Тоолуурын заалт, нэмэлт тайлбар мессеж
+ * ЗОРИУДААР байхгүй — QR-аар вэбээс харна.
  *
  * ⚠️ Энэ модулийг ЗӨВХӨН браузерт динамикаар татна (`NoticePdfButton`).
  * react-pdf ~1MB тул товч дарах хүртэл хуудасны ачаалалд нэмэгдэхгүй.
@@ -41,29 +46,73 @@ const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || origin).replace(/\/$/, '')
 Font.registerHyphenationCallback((word) => [word]);
 
 const DUE_TEXT = 'Сар бүрийн 20-ны өмнө';
-const PER_PAGE = 6;
 const GRAY = '#555';
+const PAGE_H = 841.89; // A4, pt
+
+/** Картын мөрүүдийн тогтмол өндөр (pt) — `cardHeight` эдгээрээр бодно */
+const H = {
+  padTop: 8,
+  padBottom: 7,
+  strip: 14,
+  head: 50, // QR 46 + дээр доор 2
+  blockBorder: 1.2,
+  blockPad: 2,
+  blockTop: 14,
+  debt: 11, // 10 + marginTop 1
+  pay: 9.5,
+  blockGap: 2.5,
+};
+
+const blockHeight = (c: NoticeCategory) =>
+  2 * (H.blockBorder + H.blockPad) + H.blockTop + (c.previous >= 1 ? H.debt : 0) + H.pay;
+
+const cardHeight = (n: FlatNotice) =>
+  H.padTop + H.strip + H.head + H.padBottom +
+  n.categories.reduce((sum, c) => sum + blockHeight(c) + H.blockGap, 0);
+
+/** Багана бүрийг дээрээс доош дүүргэнэ: [хуудас][багана][карт] */
+function layoutPages(notices: FlatNotice[]): FlatNotice[][][] {
+  const pages: FlatNotice[][][] = [];
+  let col: FlatNotice[] = [];
+  let used = 0;
+  const flush = () => {
+    if (!col.length) return;
+    const page = pages[pages.length - 1];
+    if (page && page.length < 2) page.push(col);
+    else pages.push([col]);
+    col = [];
+    used = 0;
+  };
+  for (const n of notices) {
+    const h = cardHeight(n);
+    if (used + h > PAGE_H) flush();
+    col.push(n);
+    used += h;
+  }
+  flush();
+  return pages;
+}
 
 const s = StyleSheet.create({
-  page: { fontFamily: 'Noto', fontSize: 8, color: '#000', flexDirection: 'row', flexWrap: 'wrap' },
-  card: { width: '50%', height: '33.333%', paddingHorizontal: 12, paddingTop: 8, paddingBottom: 9 },
+  page: { fontFamily: 'Noto', fontSize: 8, color: '#000', flexDirection: 'row' },
+  column: { width: '50%' },
+  card: { paddingHorizontal: 12, paddingTop: H.padTop, paddingBottom: H.padBottom, borderBottom: '0.6 dashed #999' },
   cutV: { position: 'absolute', left: '50%', top: 0, bottom: 0, borderLeft: '0.6 dashed #999' },
-  cutH1: { position: 'absolute', top: '33.333%', left: 0, right: 0, borderTop: '0.6 dashed #999' },
-  cutH2: { position: 'absolute', top: '66.667%', left: 0, right: 0, borderTop: '0.6 dashed #999' },
 
   strip: {
     backgroundColor: '#000',
     color: '#fff',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 2.5,
+    alignItems: 'center',
+    height: H.strip,
     paddingHorizontal: 7,
     borderRadius: 3,
   },
   stripName: { fontSize: 7, fontWeight: 700 },
   stripTitle: { fontSize: 7, fontWeight: 900, letterSpacing: 0.8 },
 
-  head: { flexDirection: 'row', alignItems: 'center', marginTop: 2, marginBottom: 2 },
+  head: { flexDirection: 'row', alignItems: 'center', height: H.head },
   flatRow: { flexDirection: 'row', alignItems: 'baseline' },
   flatNo: { fontSize: 26, fontWeight: 900, lineHeight: 1 },
   flatWord: { fontSize: 10, fontWeight: 700, marginLeft: 3 },
@@ -72,59 +121,43 @@ const s = StyleSheet.create({
   dueLabel: { fontSize: 6, color: GRAY, marginTop: 1 },
   dueText: { fontSize: 8, fontWeight: 900, borderBottom: '1.2 solid #000' },
 
-  block: { border: '1.2 solid #000', borderRadius: 3, paddingVertical: 2, paddingHorizontal: 6, marginBottom: 2.5 },
-  blockTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  block: {
+    border: `${H.blockBorder} solid #000`,
+    borderRadius: 3,
+    paddingVertical: H.blockPad,
+    paddingHorizontal: 6,
+    marginBottom: H.blockGap,
+  },
+  blockTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', height: H.blockTop },
   catLabel: { fontSize: 9.5, fontWeight: 900 },
   dueBox: { flexDirection: 'row', alignItems: 'baseline' },
   dueCaption: { fontSize: 5.5, color: GRAY, letterSpacing: 0.4, marginRight: 5 },
   amount: { fontSize: 13, fontWeight: 900, lineHeight: 1.05 },
 
-  table: { marginTop: 1.5, borderTop: '0.5 solid #bbb', paddingTop: 1 },
-  tr: { flexDirection: 'row', fontSize: 6.8 },
-  th: { flexDirection: 'row', fontSize: 5.5, color: GRAY },
-  cName: { width: '34%' },
-  cNum: { width: '22%', textAlign: 'right' },
-
   debtLine: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     fontSize: 7,
+    alignItems: 'center',
     backgroundColor: '#e6e6e6',
     paddingHorizontal: 3,
-    paddingVertical: 0.5,
+    height: H.debt - 1,
     marginTop: 1,
     marginHorizontal: -3,
     borderRadius: 2,
   },
-  pay: { marginTop: 1.5, fontSize: 6, color: '#222' },
+  // Өндрийг Text-д биш View-д өгнө — react-pdf өндөрт багтаагүй мөрийг зурдаггүй
+  payRow: { height: H.pay, justifyContent: 'flex-end' },
+  pay: { fontSize: 6, color: '#222' },
   payRef: { fontWeight: 700, color: '#000' },
 
-  foot: { position: 'absolute', left: 12, right: 12, bottom: 7, borderTop: '0.8 solid #000', paddingTop: 2 },
-  footText: { fontSize: 6, color: '#222' },
-  bold: { fontWeight: 700 },
   black: { fontWeight: 900 },
 });
 
 /** "MN110015001175205621" → "MN11 0015 0011 7520 5621" */
 const groupIban = (v: string) => v.replace(/\s+/g, '').replace(/(.{4})/g, '$1 ').trim();
 
-const diff = (pair: [number | null, number | null]) =>
-  pair[0] === null || pair[1] === null ? null : Math.round((pair[1] - pair[0]) * 100) / 100;
-
-function ReadingRow({ name, pair, unit }: { name: string; pair: [number | null, number | null]; unit: string }) {
-  const used = diff(pair);
-  return (
-    <View style={s.tr}>
-      <Text style={s.cName}>{name}</Text>
-      <Text style={s.cNum}>{formatReading(pair[0])}</Text>
-      <Text style={s.cNum}>{formatReading(pair[1])}</Text>
-      <Text style={[s.cNum, s.bold]}>{used === null ? '—' : `${formatReading(used)} ${unit}`}</Text>
-    </View>
-  );
-}
-
 function CategoryBlock({ c, flatNumber, month, account }: { c: NoticeCategory; flatNumber: number; month: string; account?: string }) {
-  const r = c.readings;
   // Нэг л сар төлөгдөөгүй бол утганд сарыг бичнэ — тулгалт сарыг таамаглахгүй.
   // Олон сар бол сар бичихгүй: FIFO хамгийн хуучнаас нь хаана.
   const owed = [...c.previousMonths, ...(c.current >= 1 ? [month] : [])];
@@ -140,23 +173,9 @@ function CategoryBlock({ c, flatNumber, month, account }: { c: NoticeCategory; f
         </View>
       </View>
 
-      {r && (
-        <View style={s.table}>
-          <View style={s.th}>
-            <Text style={s.cName}>Заалт</Text>
-            <Text style={s.cNum}>Өмнөх</Text>
-            <Text style={s.cNum}>Одоо</Text>
-            <Text style={s.cNum}>Хэрэглээ</Text>
-          </View>
-          {r.meter && <ReadingRow name="Тоолуур" pair={r.meter} unit="кВт·ц" />}
-          {r.hot && <ReadingRow name="Халуун ус" pair={r.hot} unit="м³" />}
-          {r.cold && <ReadingRow name="Хүйтэн ус" pair={r.cold} unit="м³" />}
-        </View>
-      )}
-
       {/*
         Задаргаа — зөвхөн өмнөх үлдэгдэл байвал. Ганц сарын дүнг давтах нь илүүц.
-        Нэг мөрөнд багтаана — 3 ангилал бүгд өртэй айл 99 мм картад багтах ёстой.
+        Нэг мөрөнд багтаана — картын өндрийг багасгана.
       */}
       {c.previous >= 1 && (
         <View style={s.debtLine}>
@@ -167,10 +186,12 @@ function CategoryBlock({ c, flatNumber, month, account }: { c: NoticeCategory; f
         </View>
       )}
 
-      <Text style={s.pay}>
-        {account ? `Данс: ${groupIban(account)}   ·   ` : ''}
-        Утга: <Text style={s.payRef}>{reference}</Text>
-      </Text>
+      <View style={s.payRow}>
+        <Text style={s.pay}>
+          {account ? `Данс: ${groupIban(account)}   ·   ` : ''}
+          Утга: <Text style={s.payRef}>{reference}</Text>
+        </Text>
+      </View>
     </View>
   );
 }
@@ -225,6 +246,7 @@ function NoticeCard({ n, data }: { n: FlatNotice; data: NoticesPayload }) {
           <Text style={s.dueLabel}>Төлөх хугацаа</Text>
           <Text style={s.dueText}>{DUE_TEXT}</Text>
         </View>
+        {/* Уншуулахад оршин суугчийн дэлгэц (/197) нээгдэнэ — өр, төлсөн түүх, заалт */}
         <QrCode text={`${SITE_URL}/${n.flatNumber}`} />
       </View>
 
@@ -237,42 +259,23 @@ function NoticeCard({ n, data }: { n: FlatNotice; data: NoticesPayload }) {
           account={data.accounts[c.category]}
         />
       ))}
-
-      {/*
-        QR толгойд, тоотын хажууд — доод талд тусдаа хэсэг болговол 99 мм
-        картад 3 ангилал багтахгүй. Уншуулахад оршин суугчийн дэлгэц (/197)
-        нээгдэнэ — өр, төлсөн түүх, данс.
-      */}
-      <View style={s.foot}>
-        <Text style={s.footText}>
-          QR уншуулж эсвэл <Text style={s.bold}>{`${SITE_URL.replace(/^https?:\/\//, '')}/${n.flatNumber}`}</Text> хаягаар
-          төлбөрөө вэбээс харна уу.
-        </Text>
-        <Text style={s.footText}>
-          Гүйлгээний утганд <Text style={s.bold}>ТООТОО</Text> заавал бичнэ үү. Лавлах утас:{' '}
-          <Text style={s.bold}>{data.phone}</Text>
-        </Text>
-      </View>
     </View>
   );
 }
 
 export function NoticeDocument({ data }: { data: NoticesPayload }) {
-  const pages: FlatNotice[][] = [];
-  for (let i = 0; i < data.notices.length; i += PER_PAGE) {
-    pages.push(data.notices.slice(i, i + PER_PAGE));
-  }
-
   return (
     <Document title={`Төлбөрийн мэдэгдэл ${data.month}`} author={data.buildingName}>
-      {pages.map((group, i) => (
+      {layoutPages(data.notices).map((columns, i) => (
         <Page key={i} size="A4" style={s.page}>
-          {group.map((n) => (
-            <NoticeCard key={n.flatNumber} n={n} data={data} />
+          {columns.map((col, j) => (
+            <View key={j} style={s.column}>
+              {col.map((n) => (
+                <NoticeCard key={n.flatNumber} n={n} data={data} />
+              ))}
+            </View>
           ))}
           <View style={s.cutV} fixed />
-          <View style={s.cutH1} fixed />
-          <View style={s.cutH2} fixed />
         </Page>
       ))}
     </Document>

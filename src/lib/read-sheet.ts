@@ -25,13 +25,23 @@ const ANCHORS = ['тоот', 'огноо', 'орлого', 'зарлага', 'к
  * зөвхөн эхний баганад ордог тул бүлгийн мөр сийрэг байдаг.
  *
  * Тиймээс зангуу үг агуулсан, хамгийн олон дүүрэн нүдтэй мөрийг сонгоно.
+ *
+ * ⚠️ Огноо УТГАТАЙ мөр толгой биш. Банкны хуулгын дээр «Хуулганы огноо |
+ * 2026-10-18 | Харилцагчийн нэр | ПИЙС | … | IBAN | MN81…» гэсэн мэдээллийн
+ * мөр байдаг — «огноо» агуулж, жинхэнэ толгойноос олон нүдтэй тул сонгогдож
+ * байв. Админ эхний мөрийг гараар устгаж оруулдаг байсан.
  */
+const RE_DATE_VALUE = /^\d{4}[-./]\d{2}[-./]\d{2}/;
+
 export function findHeaderRow(grid: unknown[][]): number {
   let best = 0;
   let bestScore = -1;
 
   for (let i = 0; i < Math.min(grid.length, 15); i++) {
-    const cells = (grid[i] ?? []).map((c) => String(c ?? '').toLowerCase().trim());
+    const raw = grid[i] ?? [];
+    if (raw.some((c) => c instanceof Date || RE_DATE_VALUE.test(String(c ?? '').trim()))) continue;
+
+    const cells = raw.map((c) => String(c ?? '').toLowerCase().trim());
     const filled = cells.filter((c) => c !== '').length;
     if (filled < 2) continue;
 
@@ -171,4 +181,18 @@ export async function readSheets(file: File): Promise<SheetData[]> {
 export async function readSheetRows(file: File): Promise<SheetData> {
   const sheets = await readSheets(file);
   return sheets[0] ?? { name: '', rows: [], headerRow: 1 };
+}
+
+/**
+ * Эхний табыг ТҮҮХИЙ сараалжаар уншина — толгой хайхгүй.
+ *
+ * «Шилжүүлсэн баримт» шиг нэг хуудсанд хажуу хажуугаар хэд хэдэн блоктой
+ * файлд толгой мөр нэг биш тул `gridToRows` тохирохгүй.
+ */
+export async function readFirstGrid(file: File): Promise<unknown[][]> {
+  const XLSX = await import('xlsx');
+  const workbook = XLSX.read(await file.arrayBuffer(), { cellDates: true });
+  const sheet = workbook.Sheets[workbook.SheetNames[0] ?? ''];
+  if (!sheet) return [];
+  return XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: '', blankrows: false });
 }

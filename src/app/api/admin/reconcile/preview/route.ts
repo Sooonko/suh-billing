@@ -6,6 +6,8 @@ import { detectCategoryHint } from '@/lib/matching/detect-category';
 import { findExistingHashes } from '@/lib/matching/find-duplicates';
 import { overpayOf } from '@/lib/money';
 import { parseStatement, type RawRow } from '@/lib/matching/parse-statement';
+import { extractStatementTransfers } from '@/lib/transfers';
+import { findDuplicateTransfers } from '@/lib/transfers-db';
 import type { BillCategory } from '@/lib/types';
 
 /**
@@ -65,7 +67,14 @@ export async function POST(request: Request) {
   );
 
   // 3. Мөр бүрийг задлан шинжилнэ (зарлага автоматаар хасагдана)
-  const { transactions, skipped, columns } = await parseStatement(rows, validFlats, nameIndex);
+  const { transactions, skipped: allSkipped, columns } = await parseStatement(rows, validFlats, nameIndex);
+
+  // Зарлагаас улсын байгууллагын шилжүүлгийг ялгана — тэд «алгассан»
+  // жагсаалтад биш, тусдаа хэсэгт харагдана
+  const transfers = extractStatementTransfers(rows);
+  const transferRows = new Set(transfers.map((t) => t.rowIndex));
+  const skipped = allSkipped.filter((s) => !transferRows.has(s.rowIndex));
+  const transferDuplicates = await findDuplicateTransfers(db, transfers);
 
   // Орлого нь тусдаа багана, эсвэл нэг "Дүн" багана (сөрөг = зарлага) байж болно
   if ((!columns.credit && !columns.amount) || !columns.description) {
@@ -160,8 +169,10 @@ export async function POST(request: Request) {
       needsReview: willImport.filter((p) => !p.flatId).length,
       needsDecision: willImport.filter((p) => p.needsAdminDecision).length,
       totalAmount: willImport.reduce((sum, p) => sum + p.amount, 0),
+      transfers: transferDuplicates.filter((d) => !d).length,
     },
     transactions: preview,
+    transfers: transfers.map((t, i) => ({ ...t, isDuplicate: transferDuplicates[i] })),
     skipped,
   });
 }

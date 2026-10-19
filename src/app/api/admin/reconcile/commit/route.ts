@@ -5,6 +5,8 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { requireAdmin } from '@/lib/supabase/server';
 import { findExistingHashes } from '@/lib/matching/find-duplicates';
 import { parseStatement, type RawRow } from '@/lib/matching/parse-statement';
+import { extractStatementTransfers } from '@/lib/transfers';
+import { insertTransfers } from '@/lib/transfers-db';
 import type { BillCategory } from '@/lib/types';
 
 /**
@@ -57,9 +59,28 @@ export async function POST(request: Request) {
   );
 
   const { transactions: parsed } = await parseStatement(rows, new Set(flatIdByNumber.keys()), nameIndex);
-  if (!parsed.length) {
+  const transfers = extractStatementTransfers(rows);
+  if (!parsed.length && !transfers.length) {
     return NextResponse.json({ error: 'Бүртгэх орлогын гүйлгээ олдсонгүй' }, { status: 400 });
   }
+
+  const batchId = crypto.randomUUID();
+
+  // ── 0. Улсын байгууллагын шилжүүлэг (зарлагын мөр) ─────────────────────────
+  // Орлогын бүртгэлээс ӨМНӨ — доорх «шинэ гүйлгээ алга» буцалтад алдагдахгүй
+  const transferResult = await insertTransfers(db, transfers, {
+    source: 'STATEMENT',
+    bankAccountId: account.id,
+    batchId,
+    createdBy: admin.id,
+  });
+  if (transferResult.error) {
+    return NextResponse.json({ error: `Шилжүүлэг бүртгэхэд алдаа: ${transferResult.error}` }, { status: 500 });
+  }
+  const transfersSummary = {
+    transfersImported: transferResult.inserted,
+    transfersDuplicate: transferResult.duplicates,
+  };
 
   /**
    * Аль хэдийн орсон гүйлгээг ЭНД шүүнэ.
@@ -76,16 +97,15 @@ export async function POST(request: Request) {
 
   if (!transactions.length) {
     return NextResponse.json({
-      batchId: null,
+      batchId: transferResult.inserted ? batchId : null,
       imported: 0,
       duplicatesSkipped: skippedAsDuplicate,
       autoMatched: 0,
       needsReview: 0,
+      ...transfersSummary,
       message: `Бүх ${skippedAsDuplicate} гүйлгээ аль хэдийн бүртгэгдсэн байна — шинээр орох зүйл алга.`,
     });
   }
-
-  const batchId = crypto.randomUUID();
 
   // ── 1. Гүйлгээ бүртгэх ─────────────────────────────────────────────────────
   // dedupe_hash дээрх UNIQUE индекс давхардлаас хамгаална.
@@ -156,5 +176,6 @@ export async function POST(request: Request) {
     duplicatesSkipped: skippedAsDuplicate + (transactions.length - newTransactions.length),
     autoMatched: allocations.length,
     needsReview: newTransactions.length - allocations.length,
+    ...transfersSummary,
   });
 }

@@ -420,6 +420,38 @@
     on tariffs (category, code, entrance) where effective_to is null and entrance is not null;
   create index if not exists idx_tariff_lookup on tariffs (category, code, effective_from desc);
 
+  -- -----------------------------------------------------------------------------
+  -- 11. utility_transfers — улсын байгууллага руу ШИЛЖҮҮЛСЭН мөнгө
+  --     СӨХ айлуудаас цуглуулсан төлбөрөө УБЦТС, УСУГ, УБ Дулааны сүлжээ рүү
+  --     төлдөг. Зөвхөн админы хяналтад — оршин суугчид харагдахгүй.
+  --
+  --     Эх сурвалж:
+  --       STATEMENT = банкны хуулгын ЗАРЛАГЫН мөр, гүйлгээний утган дахь
+  --                   кодоор танисан (4044820 · 25010490 · 11619)
+  --       LEDGER    = админы гараар хөтөлсөн «Шилжүүлсэн баримт» Excel
+  --
+  --     ⚠️ Давхардлыг (recipient, transfer_date, amount)-аар шалгана — UNIQUE
+  --     БИШ: нэг өдөр ижил дүнгээр хоёр удаа шилжүүлэх жинхэнэ тохиолдол бий.
+  --     Импорт нь файл дахь тоог DB дахь тоотой харьцуулж ЗӨВХӨН илүүг нь
+  --     нэмнэ (src/lib/transfers-db.ts).
+  -- -----------------------------------------------------------------------------
+  create table if not exists utility_transfers (
+    id              uuid primary key default gen_random_uuid(),
+    recipient       text not null check (recipient in ('UBCTS', 'USUG', 'UB_HEAT')),
+    transfer_date   date not null,
+    amount          numeric(14,2) not null check (amount > 0),
+    description     text,                       -- гүйлгээний утга / «Хаана»
+    note            text,                       -- жишээ «Орхоны шугуй ХХК-ийн өрөнд»
+    source          text not null check (source in ('STATEMENT', 'LEDGER')),
+    bank_account_id uuid references bank_accounts(id),
+    import_batch_id uuid,
+    created_by      uuid references auth.users(id),
+    created_at      timestamptz not null default now()
+  );
+
+  create index if not exists idx_transfers_date on utility_transfers (transfer_date desc);
+  create index if not exists idx_transfers_key  on utility_transfers (recipient, transfer_date, amount);
+
   -- =============================================================================
   --  RLS — Row Level Security
   --  Бүх хүснэгт хаалттай. Зөвхөн нэвтэрсэн админ хандана.
@@ -433,11 +465,12 @@
   alter table allocations   enable row level security;
   alter table announcements enable row level security;
   alter table tariffs       enable row level security;
+  alter table utility_transfers enable row level security;
 
   do $$
   declare t text;
   begin
-    foreach t in array array['flats','bank_accounts','invoices','transactions','allocations','announcements','tariffs'] loop
+    foreach t in array array['flats','bank_accounts','invoices','transactions','allocations','announcements','tariffs','utility_transfers'] loop
       execute format('drop policy if exists admin_all on %I', t);
       execute format(
         'create policy admin_all on %I for all to authenticated using (true) with check (true)', t

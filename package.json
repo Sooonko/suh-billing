@@ -18,7 +18,8 @@
     "test:search": "tsx src/lib/search-flat.test.ts",
     "test:money": "tsx src/lib/money.test.ts",
     "test:pagination": "tsx src/lib/pagination.test.ts",
-    "test:news": "tsx src/lib/news-seen.test.ts"
+    "test:news": "tsx src/lib/news-seen.test.ts",
+    "test:transfers": "tsx src/lib/transfers.test.ts"
   },
   "dependencies": {
     "@react-pdf/renderer": "^4.9.0",
