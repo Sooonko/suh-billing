@@ -41,6 +41,11 @@
 
   -- Аль хэдийн үүссэн датабазад нэмнэ
   alter table flats add column if not exists excel_label text;
+
+  -- Айлын талбай (м²). Халаалтын төлбөр м²-ээр бодогдоно (PER_M2 тариф).
+  -- NULL бол халаалт бодох сард тухайн айлын нэхэмжлэл ҮҮСЭХГҮЙ — дуугүй
+  -- 0₮ болгохгүй, админ талбайг нь оруулна.
+  alter table flats add column if not exists area numeric(8,2) check (area is null or area > 0);
   create index if not exists idx_flats_excel_label on flats (excel_label);
 
   -- -----------------------------------------------------------------------------
@@ -357,6 +362,7 @@
   -- арилгана — шинэ нэгж нэмэхэд зөвхөн check-ийг өөрчилнө.
   --
   --   PER_M3   = м³ тутамд         (ус: нийт хэрэглээгээр үржүүлнэ)
+  --   PER_M2   = м² тутамд         (халаалт: айлын талбайгаар үржүүлнэ)
   --   PER_KWH  = кВт·ц тутамд      (цахилгаан: эрчим хүчний тариф)
   --   CAPACITY = ₮/кВт             (цахилгаан: чадлын тариф)
   --   FIXED    = сарын тогтмол дүн  (хэрэглээнээс хамаарахгүй)
@@ -402,10 +408,36 @@
   -- Зөвшөөрөгдөх утгууд. Шинэ нэгж нэмэхэд ЗӨВХӨН энэ жагсаалтыг өөрчилнө.
   alter table tariffs drop constraint if exists tariffs_unit_check;
   alter table tariffs add constraint tariffs_unit_check
-    check (unit in ('PER_M3', 'PER_KWH', 'CAPACITY', 'FIXED', 'NUMBER', 'PERCENT'));
+    check (unit in ('PER_M3', 'PER_M2', 'PER_KWH', 'CAPACITY', 'FIXED', 'NUMBER', 'PERCENT'));
 
   -- Хуучин датабазад entrance багана нэмнэ
   alter table tariffs add column if not exists entrance smallint;
+
+  -- Улирлын тариф (халаалт). true бол ЗӨВХӨН heating_seasons-д орсон сард
+  -- бодогдоно — үнэ нь тарифт, хугацаа нь улиралд тусдаа хадгалагдана.
+  -- Дараа жил үнийг дахин оруулах шаардлагагүй, зөвхөн улирал нэмнэ.
+  alter table tariffs add column if not exists seasonal boolean not null default false;
+
+  -- -----------------------------------------------------------------------------
+  -- 10б. heating_seasons — халаалтын улирал
+  --      /admin/tariffs дээрээс админ тохируулна. Улирлын гадна сард seasonal
+  --      тарифууд (халаалт м², дулааны суурь) бодогдохгүй.
+  --      Аль хэдийн үүссэн нэхэмжлэл ӨӨРЧЛӨГДӨХГҮЙ — дүн нь хадгалагдсан.
+  -- -----------------------------------------------------------------------------
+  create table if not exists heating_seasons (
+    id          uuid primary key default gen_random_uuid(),
+    start_month char(7) not null,             -- 'YYYY-MM', энэ сар ОРНО
+    end_month   char(7) not null,             -- 'YYYY-MM', энэ сар ОРНО
+    created_by  uuid references auth.users(id),
+    created_at  timestamptz not null default now(),
+    check (start_month ~ '^\d{4}-(0[1-9]|1[0-2])$'),
+    check (end_month   ~ '^\d{4}-(0[1-9]|1[0-2])$'),
+    check (end_month >= start_month)
+  );
+
+  insert into heating_seasons (start_month, end_month)
+  select '2026-11', '2027-06'
+  where not exists (select 1 from heating_seasons);
 
   -- Нэг код + нэг орц дээр ОДОО хүчинтэй мөр яг нэг л байна.
   --
@@ -466,11 +498,12 @@
   alter table announcements enable row level security;
   alter table tariffs       enable row level security;
   alter table utility_transfers enable row level security;
+  alter table heating_seasons enable row level security;
 
   do $$
   declare t text;
   begin
-    foreach t in array array['flats','bank_accounts','invoices','transactions','allocations','announcements','tariffs','utility_transfers'] loop
+    foreach t in array array['flats','bank_accounts','invoices','transactions','allocations','announcements','tariffs','utility_transfers','heating_seasons'] loop
       execute format('drop policy if exists admin_all on %I', t);
       execute format(
         'create policy admin_all on %I for all to authenticated using (true) with check (true)', t
@@ -500,6 +533,27 @@
     ('WATER_HEAT', 'HEATING',     'Ус халаалсны төлбөр', 'FIXED',   2637, 4, '2026-01-01'),
     ('WATER_HEAT', 'VAT',         'НӨАТ',                'PERCENT',   10, 5, '2026-01-01')
   on conflict (category, code) where effective_to is null and entrance is null do nothing;
+
+  -- =============================================================================
+  --  Халаалтын тариф — 2026-11-01-ээс
+  --
+  --    халаалт        = 604₮ × айлын талбай (м²)
+  --    дулааны суурь  = 9,314₮ айл бүрт
+  --  Хоёулаа НӨАТ-ын ӨМНӨ нэмэгдэнэ — НӨАТ 10% нь бүх мөрийн нийлбэрээс.
+  --
+  --  Код нь HEATING биш: HEATING нь «Ус халаалсны төлбөр» (тогтмол 2,637₮),
+  --  түүнийг дарахгүй, хоёулаа тусдаа мөр.
+  --  Хэдий сараас хэдий сар хүртэл бодогдохыг heating_seasons тодорхойлно
+  --  (/admin/tariffs → «Халаалтын улирал»).
+  -- =============================================================================
+  insert into tariffs (category, code, label, unit, rate, sort_order, effective_from) values
+    ('WATER_HEAT', 'HEAT_AREA',     'Халаалт',                'PER_M2',  604, 6, '2026-11-01'),
+    ('WATER_HEAT', 'HEAT_BASE_FEE', 'Дулааны суурь хураамж',  'FIXED',  9314, 7, '2026-11-01')
+  on conflict (category, code) where effective_to is null and entrance is null do nothing;
+
+  -- Хоёулаа УЛИРЛЫН — heating_seasons-д орсон сард л бодогдоно
+  update tariffs set seasonal = true
+  where code in ('HEAT_AREA', 'HEAT_BASE_FEE') and not seasonal;
 
   -- =============================================================================
   --  Эхлэлийн тариф — Цахилгаан

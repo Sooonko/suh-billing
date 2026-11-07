@@ -13,6 +13,7 @@ import type { Tariff, TariffUnit } from '@/lib/types';
 
 const UNIT_LABEL: Record<TariffUnit, string> = {
   PER_M3: '₮ / м³',
+  PER_M2: '₮ / м²',
   PER_KWH: '₮ / кВт·ц',
   CAPACITY: '₮ / кВт',
   FIXED: '₮ / сар',
@@ -22,6 +23,7 @@ const UNIT_LABEL: Record<TariffUnit, string> = {
 
 const UNIT_HINT: Record<TariffUnit, string> = {
   PER_M3: 'нийт хэрэглээгээр үржүүлнэ',
+  PER_M2: 'айлын талбайгаар үржүүлнэ',
   PER_KWH: 'кВт·цаг тутамд',
   CAPACITY: 'дундаж чадлын төлбөр',
   FIXED: 'хэрэглээнээс хамаарахгүй',
@@ -158,6 +160,12 @@ export function TariffEditor({ current, history }: { current: Tariff[]; history:
                       {tariff.entrance !== null && (
                         <span className="ml-2 rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-900">
                           {tariff.entrance} орц
+                        </span>
+                      )}
+                      {/* Халаалтын улиралд л бодогдоно — дээрх «Халаалтын улирал»-аас */}
+                      {tariff.seasonal && (
+                        <span className="ml-2 rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-bold text-orange-900">
+                          улирлын
                         </span>
                       )}
                       <span className="block text-xs text-slate-400">

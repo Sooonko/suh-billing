@@ -1,3 +1,5 @@
+import { FilterDraftProvider } from './FilterDraft';
+
 /**
  * Шүүлтүүрийн карт — админы бүх жагсаалтын хуудсанд ижил.
  *
@@ -7,6 +9,8 @@
  * зурж өгнө.
  *
  * Баруун талд нэг үйлдлийн зай (`action`) — Excel татах товч тэнд сууна.
+ *
+ * Доторх сонголтууд «Шүүх» дарах хүртэл хүлээгдэнэ (`FilterDraft`).
  */
 export function FilterPanel({
   children,
@@ -17,10 +21,12 @@ export function FilterPanel({
 }) {
   return (
     <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="flex flex-wrap items-end gap-x-6 gap-y-4">
-        {children}
-        {action && <div className="ml-auto">{action}</div>}
-      </div>
+      <FilterDraftProvider>
+        <div className="flex flex-wrap items-end gap-x-6 gap-y-4">
+          {children}
+          {action && <div className="ml-auto">{action}</div>}
+        </div>
+      </FilterDraftProvider>
     </div>
   );
 }

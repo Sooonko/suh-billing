@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
 import { calculateWaterHeat, type TariffRow } from './water-heat';
 import { createFlatResolver } from './flat-resolver';
+import { monthInSeasons } from './load-tariffs';
 import { resolveTariffs, type TariffWithEntrance } from './resolve-tariffs';
 import { detectWaterColumns, parseWaterInvoices } from '@/lib/matching/parse-water-invoices';
 import { gridToRows } from '@/lib/read-sheet';
@@ -203,3 +204,65 @@ for (const [name, tariffSet, entrance, want] of scenarios) {
   );
 }
 console.log(`\n${entranceOk}/${scenarios.length} орцын тохиолдол зөв`);
+
+// ── Халаалт м²-ээр (2026-11-ээс) ──────────────────────────────────────────
+// 604₮ × айлын м² + дулааны суурь 9,314₮ — хоёулаа НӨАТ-ын ӨМНӨ нэмэгдэнэ.
+// Гараар бодсон: 11 м³ ус + тогтмолууд = 79,337 · 604 × 60.5 = 36,542 ·
+// + 9,314 → дэд дүн 125,193 · НӨАТ 12,519.3 → 137,712.3
+console.log('\nХалаалт м²-ээр:');
+
+const november: TariffWithEntrance[] = [
+  ...october,
+  { code: 'HEAT_AREA', label: 'Халаалт', unit: 'PER_M2', rate: 604, entrance: null, sortOrder: 6 },
+  { code: 'HEAT_BASE_FEE', label: 'Дулааны суурь хураамж', unit: 'FIXED', rate: 9314, entrance: null, sortOrder: 7 },
+];
+
+let areaOk = 0;
+const areaBill = calculateWaterHeat(readings, resolveTariffs(november, 2), 60.5);
+const heatLine = areaBill.lines.find((l) => l.code === 'HEAT_AREA');
+const areaChecks: [string, boolean][] = [
+  ['нийт 137,712.30₮', Math.abs(areaBill.total - 137712.3) < 0.005],
+  ['халаалт = 604 × 60.5 = 36,542₮', heatLine?.amount === 36542 && heatLine.qty === 60.5],
+  ['НӨАТ дулааны мөрүүдийг багтаана (12,519.30₮)', Math.abs(areaBill.vat - 12519.3) < 0.005],
+];
+
+// Талбайгүй айл — 0₮ халаалттай чимээгүй гарах ЁСГҮЙ
+let threw = false;
+try {
+  calculateWaterHeat(readings, resolveTariffs(november, 2), null);
+} catch {
+  threw = true;
+}
+areaChecks.push(['талбайгүй бол алдаа өгнө', threw]);
+
+// 10 сарын тарифт м² мөр байхгүй — талбайгүй айл ч хэвийн бодогдоно
+areaChecks.push([
+  '10 сар: талбай шаардахгүй, дүн өөрчлөгдөхгүй',
+  Math.abs(calculateWaterHeat(readings, resolveTariffs(october, 2), null).total - 87270.7) < 0.005,
+]);
+
+for (const [name, pass] of areaChecks) {
+  if (pass) areaOk++;
+  console.log(`  ${pass ? '✅' : '❌'} ${name}`);
+}
+console.log(`\n${areaOk}/${areaChecks.length} халаалтын тохиолдол зөв`);
+
+// ── Халаалтын улирал ──────────────────────────────────────────────────────
+// 2026-11 … 2027-06 — эхлэл, төгсгөл хоёулаа ОРНО, оны заагийг давна
+console.log('\nХалаалтын улирал (2026-11 → 2027-06):');
+const seasons = [{ start_month: '2026-11', end_month: '2027-06' }];
+const seasonCases: [string, boolean][] = [
+  ['2026-10', false],
+  ['2026-11', true],
+  ['2026-12', true],
+  ['2027-01', true],
+  ['2027-06', true],
+  ['2027-07', false],
+];
+let seasonOk = 0;
+for (const [month, want] of seasonCases) {
+  const got = monthInSeasons(month, seasons);
+  if (got === want) seasonOk++;
+  console.log(`  ${got === want ? '✅' : '❌'} ${month} → ${got ? 'халаалт бодно' : 'бодохгүй'}`);
+}
+console.log(`\n${seasonOk}/${seasonCases.length} улирлын тохиолдол зөв`);

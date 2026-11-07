@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, useTransition } from 'react';
-import { Spinner } from './MonthPicker';
+import { useFilterDraft } from './FilterDraft';
 
 /**
  * Хайлтын талбар — томруулагчтай, Enter эсвэл «Шүүх»-ээр ажиллана.
@@ -12,6 +12,10 @@ import { Spinner } from './MonthPicker';
  * нэг form-д хийвэл сонголт дарах бүрт хайлт алга болно.
  *
  * Бусад шүүлтийг URL-аас аваад хэвээр хадгална.
+ *
+ * Шүүлтүүрийн картан дотор бол «Шүүх» нь Данс, Төлөв, Сар-ын ХҮЛЭЭЛГЭСЭН
+ * сонголтыг хайлттай хамт НЭГ удаа хэрэгжүүлнэ (`FilterDraft`). Хэрэгжээгүй
+ * сонголт байвал товч тодорч, «Шүүх» дарахыг сануулна.
  */
 export function SearchBox({
   placeholder = 'Тоот эсвэл эзний нэр',
@@ -22,12 +26,20 @@ export function SearchBox({
 }) {
   const router = useRouter();
   const params = useSearchParams();
+  const draft = useFilterDraft();
   const [value, setValue] = useState(initial);
   // Хайх товч дарснаас хойш дата иртэл 1–2 секунд болдог
-  const [pending, startTransition] = useTransition();
+  const [ownPending, startTransition] = useTransition();
+  const pending = ownPending || Boolean(draft?.pending);
+  /** Хэрэгжээгүй сонголт эсвэл өөрчилсөн хайлт */
+  const dirty = Boolean(draft?.dirty) || value.trim() !== initial;
 
   function submit(event: React.FormEvent) {
     event.preventDefault();
+    if (draft) {
+      draft.apply({ q: value.trim() || null });
+      return;
+    }
     const next = new URLSearchParams(params.toString());
     // Шүүлт өөрчлөгдвөл 1-р хуудас руу — эс бөгөөс хэтэрсэн хуудас хоосон гарна
     next.delete('page');
@@ -63,7 +75,11 @@ export function SearchBox({
       <button
         type="submit"
         disabled={pending}
-        className="inline-flex h-9 items-center gap-2 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60"
+        className={`inline-flex h-9 items-center gap-2 rounded-lg px-4 text-sm font-semibold text-white transition disabled:opacity-60 ${
+          dirty && !pending
+            ? 'bg-blue-600 ring-2 ring-blue-200 hover:bg-blue-700'
+            : 'bg-slate-900 hover:bg-slate-800'
+        }`}
       >
         {pending && (
           <svg viewBox="0 0 24 24" fill="none" className="h-3.5 w-3.5 animate-spin">
@@ -79,6 +95,10 @@ export function SearchBox({
           type="button"
           onClick={() => {
             setValue('');
+            if (draft) {
+              draft.apply({ q: null });
+              return;
+            }
             const next = new URLSearchParams(params.toString());
             // Шүүлт өөрчлөгдвөл 1-р хуудас руу — эс бөгөөс хэтэрсэн хуудас хоосон гарна
             next.delete('page');

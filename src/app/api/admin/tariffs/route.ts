@@ -4,7 +4,8 @@ import { requireAdmin } from '@/lib/supabase/server';
 import type { BillCategory, TariffUnit } from '@/lib/types';
 
 const CATEGORIES: BillCategory[] = ['WATER_HEAT', 'SOH', 'ELECTRICITY'];
-const UNITS: TariffUnit[] = ['PER_M3', 'FIXED', 'PERCENT'];
+/** schema.sql-ийн tariffs_unit_check-тэй ИЖИЛ байх ёстой */
+const UNITS: TariffUnit[] = ['PER_M3', 'PER_M2', 'PER_KWH', 'CAPACITY', 'FIXED', 'NUMBER', 'PERCENT'];
 
 /** '2026-10-01' → '2026-09-30' — шинэ тариф эхлэхийн өмнөх өдөр */
 function dayBefore(date: string): string {
@@ -66,7 +67,7 @@ export async function POST(request: Request) {
   // Одоо хүчинтэй мөрийг олоод хаана
   const { data: currentRows } = await db
     .from('tariffs')
-    .select('id, effective_from, rate, entrance')
+    .select('id, effective_from, rate, entrance, seasonal')
     .eq('category', category)
     .eq('code', code)
     .is('effective_to', null);
@@ -100,6 +101,9 @@ export async function POST(request: Request) {
       rate,
       entrance,
       effective_from: effectiveFrom,
+      // Халаалтын үнийг сольход улирлын тэмдэг ӨВЛӨГДӨНӨ — эс бөгөөс
+      // шинэ мөр жилийн турш бодогдох болно
+      seasonal: Boolean(current?.seasonal),
       sort_order: 99,
       created_by: admin.id,
     })

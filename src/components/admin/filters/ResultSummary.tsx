@@ -1,6 +1,8 @@
 /**
- * Хүснэгтийн дээрх нэг мөр: зүүн талд «юу харж байна», баруун талд
- * анхааруулах чипүүд.
+ * Хүснэгтийн дээрх хэсэг: «юу харж байна», доор нь анхааруулгууд.
+ *
+ * ⚠️ Анхааруулга ЗҮҮН ТАЛД, тусдаа мөрөнд. Өмнө нь баруун буланд жижиг
+ * чип байсан тул админ анзаардаггүй байв — нүд зүүнээс уншиж эхэлдэг.
  *
  * Шүүлт ба хүснэгтийн хооронд ЗААВАЛ байх ёстой мөр — админ аль шүүлт
  * хүчинтэй байгааг хүснэгт харахаас өмнө мэдэх хэрэгтэй.
@@ -19,7 +21,7 @@ export function ResultSummary({
   children?: React.ReactNode;
 }) {
   return (
-    <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+    <div className="mb-3 space-y-2">
       <p className="text-sm text-slate-500">
         {scope} — <span className="font-bold text-slate-900">{count.toLocaleString('mn-MN')} {unit}</span>
       </p>

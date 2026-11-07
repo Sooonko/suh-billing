@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTransition } from 'react';
 import { MonthInput } from '@/components/ui/MonthInput';
+import { useStagedMonth } from './FilterDraft';
 import { Spinner, StepButton } from './MonthPicker';
 
 /**
@@ -31,7 +32,11 @@ export function MonthStepper({
   const params = useSearchParams();
   // Дата иртэл 1–2 секунд — тэмдэггүй бол дахин дахин дардаг
   const [pending, startTransition] = useTransition();
+  // Шүүлтүүрийн картан дотор бол «Шүүх» хүртэл хүлээнэ
+  const staged = useStagedMonth(current);
+  const shown = staged ? staged.month : current;
   const go = (href: string) => startTransition(() => router.push(href));
+  const select = (month: string | null) => (staged ? staged.set(month) : go(hrefFor(month)));
 
   /** Бусад шүүлтийг хэвээр хадгалаад зөвхөн сарыг сольсон URL */
   const hrefFor = (month: string | null) => {
@@ -43,28 +48,28 @@ export function MonthStepper({
     return `?${next.toString()}`;
   };
 
-  const index = current ? months.indexOf(current) : -1;
+  const index = shown ? months.indexOf(shown) : -1;
   // months нь БУУРАХААР эрэмбэлэгдсэн: index+1 нь илүү хуучин сар
   // «Бүх хугацаа» үед ‹ дарвал хамгийн сүүлийн сар руу орно
   const older =
-    !current ? (months[0] ?? null) : index >= 0 && index + 1 < months.length ? months[index + 1] : null;
+    !shown ? (months[0] ?? null) : index >= 0 && index + 1 < months.length ? months[index + 1] : null;
   const newer = index > 0 ? months[index - 1] : null;
 
   return (
     <div className="flex items-center gap-1.5">
-      <StepButton label="Өмнөх сар" disabled={!older} onClick={() => older && go(hrefFor(older))}>
+      <StepButton label="Өмнөх сар" disabled={!older} onClick={() => older && select(older)}>
         ‹
       </StepButton>
       <MonthInput
-        value={current}
-        onChange={(m) => go(hrefFor(m))}
+        value={shown}
+        onChange={select}
         // Дата байхгүй сарыг сонгох нь утгагүй — бүдгэрүүлнэ
         selectable={months}
         marked={[]}
         allowEmpty={allowAll}
         emptyLabel={allLabel}
       />
-      <StepButton label="Дараах сар" disabled={!newer} onClick={() => newer && go(hrefFor(newer))}>
+      <StepButton label="Дараах сар" disabled={!newer} onClick={() => newer && select(newer)}>
         ›
       </StepButton>
       {pending && <Spinner label="Сар солиж байна" />}

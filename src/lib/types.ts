@@ -142,6 +142,8 @@ export interface BankAccount {
  */
 export type TariffUnit =
   | 'PER_M3'
+  /** м² тутамд — халаалт, айлын талбайгаар */
+  | 'PER_M2'
   | 'PER_KWH'
   | 'CAPACITY'
   | 'FIXED'
@@ -161,4 +163,6 @@ export interface Tariff {
   entrance: number | null;
   effective_from: string;
   effective_to: string | null;
+  /** true бол зөвхөн халаалтын улиралд бодогдоно (heating_seasons) */
+  seasonal: boolean;
 }

@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTransition } from 'react';
 import { MonthInput, shiftMonth } from '@/components/ui/MonthInput';
+import { useStagedMonth } from './FilterDraft';
 
 /**
  * Сар сонгогч — ДУРЫН сар (нэхэмжлэл).
@@ -46,13 +47,18 @@ export function MonthPicker({
     startTransition(() => router.push(`?${next.toString()}`));
   }
 
+  // Шүүлтүүрийн картан дотор бол «Шүүх» хүртэл хүлээнэ
+  const staged = useStagedMonth(current);
+  const shown = staged ? staged.month : current;
+  const select = (month: string | null) => (staged ? staged.set(month) : go(month));
+
   return (
     <div className="flex items-center gap-1.5">
-      <StepButton label="Өмнөх сар" disabled={!current} onClick={() => current && go(shiftMonth(current, -1))}>
+      <StepButton label="Өмнөх сар" disabled={!shown} onClick={() => shown && select(shiftMonth(shown, -1))}>
         ‹
       </StepButton>
-      <MonthInput value={current} onChange={go} marked={marked} allowEmpty={allowEmpty} emptyLabel={emptyLabel} />
-      <StepButton label="Дараах сар" disabled={!current} onClick={() => current && go(shiftMonth(current, 1))}>
+      <MonthInput value={shown} onChange={select} marked={marked} allowEmpty={allowEmpty} emptyLabel={emptyLabel} />
+      <StepButton label="Дараах сар" disabled={!shown} onClick={() => shown && select(shiftMonth(shown, 1))}>
         ›
       </StepButton>
       {pending && <Spinner label="Сар солиж байна" />}

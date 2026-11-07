@@ -1,7 +1,8 @@
 import { revalidateTag } from 'next/cache';
 import { NextResponse } from 'next/server';
 import { calculateElectricity, ElectricityError } from '@/lib/billing/electricity';
-import { resolveTariffs, type TariffWithEntrance } from '@/lib/billing/resolve-tariffs';
+import { loadTariffsForMonth } from '@/lib/billing/load-tariffs';
+import { resolveTariffs } from '@/lib/billing/resolve-tariffs';
 import { calculateWaterHeat, WaterHeatError, type TariffRow } from '@/lib/billing/water-heat';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { requireAdmin } from '@/lib/supabase/server';
@@ -21,24 +22,7 @@ async function loadTariffsFor(
   billingMonth: string,
   entrance: number | null,
 ): Promise<TariffRow[]> {
-  const monthStart = `${billingMonth}-01`;
-  const { data } = await db
-    .from('tariffs')
-    .select('code, label, unit, rate, entrance, sort_order')
-    .eq('category', category)
-    .lte('effective_from', monthStart)
-    .or(`effective_to.is.null,effective_to.gte.${monthStart}`)
-    .order('sort_order');
-
-  const all: TariffWithEntrance[] = (data ?? []).map((t) => ({
-    code: t.code as string,
-    label: t.label as string,
-    unit: t.unit as TariffRow['unit'],
-    rate: Number(t.rate),
-    entrance: t.entrance === null ? null : Number(t.entrance),
-    sortOrder: Number(t.sort_order),
-  }));
-  return resolveTariffs(all, entrance);
+  return resolveTariffs(await loadTariffsForMonth(db, category, billingMonth), entrance);
 }
 
 /**
@@ -57,6 +41,8 @@ async function loadTariffsFor(
  *         prevReading?, currentReading?,                    // цахилгаан
  *         billAmount?,                                      // СӨХ
  *         directAmount? }   // true бол заалтгүйгээр billAmount-ыг шууд бичнэ
+ *         dryRun? }         // true бол бодоод л буцаана, ХАДГАЛАХГҮЙ —
+ *                           // маягт дээр «яаж бодогдох вэ»-г урьдчилж харуулна
  */
 export async function POST(request: Request) {
   const admin = await requireAdmin();
@@ -81,7 +67,7 @@ export async function POST(request: Request) {
 
   const { data: flat } = await db
     .from('flats')
-    .select('id, flat_number, entrance')
+    .select('id, flat_number, entrance, area')
     .eq('flat_number', flatNumber)
     .eq('is_active', true)
     .maybeSingle();
@@ -183,7 +169,7 @@ export async function POST(request: Request) {
     try {
       if (category === 'WATER_HEAT') {
         const r = readings as { hotPrev: number; hotCurrent: number; coldPrev: number; coldCurrent: number };
-        const bill = calculateWaterHeat(r, tariffs);
+        const bill = calculateWaterHeat(r, tariffs, flat.area === null ? null : Number(flat.area));
         Object.assign(row, {
           hot_prev: r.hotPrev,
           hot_current: r.hotCurrent,
@@ -211,6 +197,17 @@ export async function POST(request: Request) {
           : 'Бодоход алдаа гарлаа';
       return NextResponse.json({ error: message }, { status: 400 });
     }
+  }
+
+  // Урьдчилсан харалт — бүх шалгалт, тооцоо ижил, зөвхөн бичихгүй
+  if (body.dryRun === true) {
+    return NextResponse.json({
+      ok: true,
+      flatNumber,
+      billAmount: Number(row.bill_amount),
+      breakdown: row.breakdown ?? null,
+      area: flat.area === null ? null : Number(flat.area),
+    });
   }
 
   const { data: created, error } = await db
@@ -265,7 +262,7 @@ export async function PATCH(request: Request) {
   const db = createAdminClient();
   const { data: invoice, error: readError } = await db
     .from('invoices')
-    .select('id, category, billing_month, flats(entrance)')
+    .select('id, category, billing_month, flats(entrance, area)')
     .eq('id', body.id)
     .single();
 
@@ -274,29 +271,12 @@ export async function PATCH(request: Request) {
   }
 
   // Айл аль орцынх бэ — тариф орцоор ялгаатай байж болно
-  const flat = invoice.flats as unknown as { entrance: number | null } | null;
+  const flat = invoice.flats as unknown as { entrance: number | null; area: number | null } | null;
   const entrance = flat?.entrance === null || flat?.entrance === undefined ? null : Number(flat.entrance);
 
   /** Тухайн сард, тухайн ОРЦОД хүчинтэй байсан тарифыг авна */
   async function loadTariffs(category: string): Promise<TariffRow[]> {
-    const monthStart = `${invoice!.billing_month}-01`;
-    const { data } = await db
-      .from('tariffs')
-      .select('code, label, unit, rate, entrance, sort_order')
-      .eq('category', category)
-      .lte('effective_from', monthStart)
-      .or(`effective_to.is.null,effective_to.gte.${monthStart}`)
-      .order('sort_order');
-
-    const all: TariffWithEntrance[] = (data ?? []).map((t) => ({
-      code: t.code as string,
-      label: t.label as string,
-      unit: t.unit as TariffRow['unit'],
-      rate: Number(t.rate),
-      entrance: t.entrance === null ? null : Number(t.entrance),
-      sortOrder: Number(t.sort_order),
-    }));
-    return resolveTariffs(all, entrance);
+    return resolveTariffs(await loadTariffsForMonth(db, category, invoice!.billing_month), entrance);
   }
 
   // ── Цахилгаан: нэг тоолуурын заалтаас ДАХИН бодно ─────────────────────────
@@ -378,7 +358,7 @@ export async function PATCH(request: Request) {
 
   let bill;
   try {
-    bill = calculateWaterHeat(readings, tariffs);
+    bill = calculateWaterHeat(readings, tariffs, flat?.area == null ? null : Number(flat.area));
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof WaterHeatError ? error.message : 'Бодоход алдаа гарлаа' },

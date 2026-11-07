@@ -3,6 +3,7 @@ import { calculateElectricity, ElectricityError } from '@/lib/billing/electricit
 import { calculateWaterHeat, WaterHeatError, type BillLine, type TariffRow } from '@/lib/billing/water-heat';
 import { parseInvoices, type RawRow } from '@/lib/matching/parse-invoices';
 import { createFlatResolver } from '@/lib/billing/flat-resolver';
+import { loadTariffsForMonth } from '@/lib/billing/load-tariffs';
 import { resolveTariffs, type TariffWithEntrance } from '@/lib/billing/resolve-tariffs';
 import { parseElectricityInvoices } from '@/lib/matching/parse-electricity-invoices';
 import { parseWaterInvoices } from '@/lib/matching/parse-water-invoices';
@@ -75,6 +76,8 @@ export interface ImportRow {
   coldPrev?: number;
   coldCurrent?: number;
   breakdown?: BillLine[];
+  /** Айлын талбай (м²) — халаалт бодогдсон эсэхийг админ шалгахад */
+  area?: number | null;
 }
 
 export interface InvoiceImportAnalysis {
@@ -108,24 +111,7 @@ async function loadTariffs(
   category: BillCategory,
   billingMonth: string,
 ): Promise<TariffWithEntrance[]> {
-  const monthStart = `${billingMonth}-01`;
-
-  const { data } = await db
-    .from('tariffs')
-    .select('code, label, unit, rate, entrance, sort_order')
-    .eq('category', category)
-    .lte('effective_from', monthStart)
-    .or(`effective_to.is.null,effective_to.gte.${monthStart}`)
-    .order('sort_order');
-
-  return (data ?? []).map((t) => ({
-    code: t.code as string,
-    label: t.label as string,
-    unit: t.unit as TariffRow['unit'],
-    rate: Number(t.rate),
-    entrance: t.entrance === null ? null : Number(t.entrance),
-    sortOrder: Number(t.sort_order),
-  }));
+  return loadTariffsForMonth(db, category, billingMonth);
 }
 
 /**
@@ -165,11 +151,14 @@ export async function analyzeInvoiceImport(
 
   const { data: flats } = await db
     .from('flats')
-    .select('id, flat_number, owner_name, excel_label, entrance')
+    .select('id, flat_number, owner_name, excel_label, entrance, area')
     .eq('is_active', true);
   const flatIdByNumber = new Map<number, string>((flats ?? []).map((f) => [f.flat_number, f.id]));
   const entranceByFlatId = new Map<string, number | null>(
     (flats ?? []).map((f) => [f.id as string, f.entrance === null ? null : Number(f.entrance)]),
+  );
+  const areaByFlatId = new Map<string, number | null>(
+    (flats ?? []).map((f) => [f.id as string, f.area === null ? null : Number(f.area)]),
   );
   const validFlats = new Set(flatIdByNumber.keys());
   // «дэлгүүр», «amo sport» гэх нэрээр бичигдсэн мөрүүдийг ч таних
@@ -273,6 +262,7 @@ export async function analyzeInvoiceImport(
           const bill = calculateWaterHeat(
             row,
             resolveTariffs(tariffs, sheetEntrance ?? entranceByFlatId.get(flatId) ?? null),
+            areaByFlatId.get(flatId) ?? null,
           );
           valid.push({
             rowIndex,
@@ -294,9 +284,10 @@ export async function analyzeInvoiceImport(
             coldPrev: row.coldPrev,
             coldCurrent: row.coldCurrent,
             breakdown: bill.lines,
+            area: areaByFlatId.get(flatId) ?? null,
           });
         } catch (error) {
-          // Заалт буурсан — дуугүй 0 болгохгүй, админ шийднэ
+          // Заалт буурсан эсвэл талбай бүртгэгдээгүй — дуугүй 0 болгохгүй, админ шийднэ
           skipped.push({
             sheet: sheet.name,
             rowIndex,

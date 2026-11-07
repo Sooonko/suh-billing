@@ -1,3 +1,4 @@
+import { HeatingSeasons, type HeatingSeason } from '@/components/admin/HeatingSeasons';
 import { TariffEditor } from '@/components/admin/TariffEditor';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { CATEGORY_LABEL, type Tariff } from '@/lib/types';
@@ -12,12 +13,18 @@ export const dynamic = 'force-dynamic';
  */
 export default async function AdminTariffsPage() {
   const db = createAdminClient();
-  const { data, error } = await db
-    .from('tariffs')
-    .select('id, category, code, label, unit, rate, sort_order, entrance, effective_from, effective_to')
-    .order('category')
-    .order('sort_order')
-    .order('effective_from', { ascending: false });
+  const [{ data, error }, { data: seasons, error: seasonsError }] = await Promise.all([
+    db
+      .from('tariffs')
+      .select('id, category, code, label, unit, rate, sort_order, entrance, effective_from, effective_to, seasonal')
+      .order('category')
+      .order('sort_order')
+      .order('effective_from', { ascending: false }),
+    db.from('heating_seasons').select('id, start_month, end_month').order('start_month', { ascending: false }),
+  ]);
+  const currentMonth = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ulaanbaatar' })
+    .format(new Date())
+    .slice(0, 7);
 
   const all = (data ?? []).map((t) => ({ ...t, rate: Number(t.rate) })) as Tariff[];
   const categories = [...new Set(all.map((t) => t.category))];
@@ -37,6 +44,16 @@ export default async function AdminTariffsPage() {
             Supabase → SQL Editor дээр <code className="font-mono">supabase/schema.sql</code>-ыг
             дахин RUN дарна уу.
           </p>
+        </div>
+      )}
+
+      {!error && !seasonsError && (
+        <div className="mb-10">
+          <HeatingSeasons
+            seasons={(seasons ?? []) as HeatingSeason[]}
+            currentMonth={currentMonth}
+            seasonalLabels={[...new Set(all.filter((t) => t.seasonal && t.effective_to === null).map((t) => t.label))]}
+          />
         </div>
       )}
 

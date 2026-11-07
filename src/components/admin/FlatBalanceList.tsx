@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { formatMnt } from '@/lib/format';
+import { hasDebt, hasOverpaid, settledBalance } from '@/lib/money';
 import { CATEGORIES, type BillCategory } from '@/lib/types';
 
 /**
@@ -22,10 +23,17 @@ export interface FlatBalance {
   totalBalance: number;
 }
 
-/** Үлдэгдлийн тэмдгээс хамаарсан өнгө */
+/**
+ * Үлдэгдлийн өнгө — 50₮-ийн хүлцэлтэй (money.ts).
+ *
+ * ⚠️ Тэмдгээр нь шууд биш. Нэхэмжлэл 2 аравтын оронтой, банк бүхэл
+ * төгрөгөөр хөдөлдөг тул бүтэн төлсөн айл ч 0.40₮ эсвэл −0.30₮ үлдэцтэй
+ * байдаг. Түүнийг тэмдгээр будахад «0₮» нь улаан (өртэй) эсвэл цэнхэр
+ * (илүү төлсөн) харагдаж, худлаа анхааруулга болж байв.
+ */
 function tone(value: number): string {
-  if (value > 0) return 'text-red-700';
-  if (value < 0) return 'text-blue-700';
+  if (hasDebt(value)) return 'text-red-700';
+  if (hasOverpaid(value)) return 'text-blue-700';
   return 'text-slate-400';
 }
 
@@ -102,7 +110,7 @@ export function FlatBalanceList({
                         {one.paid === 0 ? '—' : formatMnt(one.paid)}
                       </td>
                       <td className={`px-3 py-2 text-right font-bold tabular-nums ${tone(one.balance)}`}>
-                        {formatMnt(one.balance)}
+                        {formatMnt(settledBalance(one.balance))}
                       </td>
                     </>
                   ) : (
@@ -114,7 +122,7 @@ export function FlatBalanceList({
                             key={c.key}
                             className={`px-3 py-2 text-right tabular-nums ${tone(cell.balance)}`}
                           >
-                            {formatMnt(cell.balance)}
+                            {formatMnt(settledBalance(cell.balance))}
                           </td>
                         );
                       })}
@@ -124,7 +132,7 @@ export function FlatBalanceList({
                       <td
                         className={`px-3 py-2 text-right font-bold tabular-nums ${tone(flat.totalBalance)}`}
                       >
-                        {formatMnt(flat.totalBalance)}
+                        {formatMnt(settledBalance(flat.totalBalance))}
                       </td>
                     </>
                   )}

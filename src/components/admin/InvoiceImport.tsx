@@ -39,6 +39,8 @@ interface PreviewRow {
   coldPrev?: number;
   coldCurrent?: number;
   breakdown?: BillLine[];
+  /** Айлын талбай (м²) */
+  area?: number | null;
 }
 
 interface TariffRow {
@@ -92,6 +94,8 @@ export function InvoiceImport() {
   /** Файлын бүх таб — СӨХ нэхэмжлэлээ орцоор хуваадаг («1 орц», «2 орц») */
   const [sheets, setSheets] = useState<SheetData[] | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
+  // Халаалт м²-ээр бодогдох сард л талбайн багана хэрэгтэй
+  const hasAreaTariff = preview?.tariffs.some((t) => t.unit === 'PER_M2') ?? false;
   const [result, setResult] = useState<CommitResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<'read' | 'preview' | 'commit' | null>(null);
@@ -347,7 +351,13 @@ export function InvoiceImport() {
                     {t.label}:{' '}
                     <span className="font-bold tabular-nums">
                       {t.rate}
-                      {t.unit === 'PER_M3' ? '₮/м³' : t.unit === 'PERCENT' ? '%' : '₮'}
+                      {t.unit === 'PER_M3'
+                        ? '₮/м³'
+                        : t.unit === 'PER_M2'
+                          ? '₮/м²'
+                          : t.unit === 'PERCENT'
+                            ? '%'
+                            : '₮'}
                     </span>
                   </li>
                 ))}
@@ -482,6 +492,7 @@ export function InvoiceImport() {
                     <th className="px-3 py-2 text-right font-medium">Халуун</th>
                     <th className="px-3 py-2 text-right font-medium">Хүйтэн</th>
                     <th className="px-3 py-2 text-right font-medium">Нийт м³</th>
+                    {hasAreaTariff && <th className="px-3 py-2 text-right font-medium">Талбай м²</th>}
                     <th className="px-3 py-2 text-right font-medium">Төлбөр</th>
                     <th className="px-3 py-2 text-left font-medium">Төлөв</th>
                   </tr>
@@ -522,6 +533,9 @@ export function InvoiceImport() {
                     <td className="px-3 py-2 text-right font-medium tabular-nums text-slate-700">
                       {row.usageAmount ?? '—'}
                     </td>
+                    {isWater && hasAreaTariff && (
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-500">{row.area ?? '—'}</td>
+                    )}
                     <td className="px-3 py-2 text-right font-semibold tabular-nums">
                       {formatMnt(row.billAmount)}
                     </td>

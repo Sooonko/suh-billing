@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { BUTTON, Field, INPUT, Modal, ModalError, Spinner } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Feedback';
 import { MonthInput } from '@/components/ui/MonthInput';
@@ -90,6 +90,53 @@ function AddInvoiceDialog({
 
   const set = (key: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setValues((v) => ({ ...v, [key]: e.target.value }));
+
+  /**
+   * Урьдчилсан тооцоо — заалт бүрэн бол серверээр БОДУУЛЖ (хадгалахгүй)
+   * харуулна. Халаалт (604₮ × м²) зэрэг мөрүүд, айлын талбай бүртгэгдээгүй
+   * зэрэг алдааг «Нэмэх» дарахаас ӨМНӨ харна.
+   *
+   * Сервер дээр бодуулах шалтгаан: тариф, улирал, орц, талбай бүгд DB-д —
+   * клиент дээр давхар бодвол хоёр тооцоо зөрөх эрсдэлтэй.
+   */
+  const readingKeys =
+    category === 'WATER_HEAT' ? ['hotPrev', 'hotCurrent', 'coldPrev', 'coldCurrent'] : category === 'ELECTRICITY' ? ['prev', 'current'] : [];
+  const readingsReady =
+    !isDirect && readingKeys.length > 0 && readingKeys.every((k) => (values[k] ?? '').trim() !== '');
+  const [preview, setPreview] = useState<Preview | { error: string } | null>(null);
+  const previewKey = readingsReady ? JSON.stringify([month, flatNumber.trim(), readingKeys.map((k) => values[k])]) : '';
+
+  useEffect(() => {
+    setPreview(null);
+    if (!previewKey) return;
+    const flat = Number(flatNumber.trim());
+    if (!Number.isInteger(flat) || flat <= 0 || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return;
+
+    let cancelled = false;
+    // Бичиж байхад хүсэлт бүр явуулахгүй — 400мс зогсоход л
+    const timer = setTimeout(async () => {
+      const result = await callApi<Preview>('/api/admin/invoices', {
+        method: 'POST',
+        json: { ...buildReadings(), category, billingMonth: month, flatNumber: flat, dryRun: true },
+      });
+      if (cancelled) return;
+      setPreview(result.ok ? result.data : { error: result.error });
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+    // previewKey нь бүх оролтыг агуулна
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewKey]);
+
+  /** Заалтын талбарууд — тоо болгосон */
+  function buildReadings() {
+    const n = (key: string) => (values[key] === undefined || values[key].trim() === '' ? 0 : Number(values[key].trim()));
+    return category === 'WATER_HEAT'
+      ? { hotPrev: n('hotPrev'), hotCurrent: n('hotCurrent'), coldPrev: n('coldPrev'), coldCurrent: n('coldCurrent') }
+      : { prevReading: n('prev'), currentReading: n('current') };
+  }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -274,7 +321,77 @@ function AddInvoiceDialog({
         </label>
       )}
 
+      {preview && <PreviewBox preview={preview} />}
+
       <ModalError>{error}</ModalError>
     </Modal>
+  );
+}
+
+interface PreviewLine {
+  code: string;
+  label: string;
+  unit: string;
+  rate: number;
+  qty: number;
+  amount: number;
+}
+
+interface Preview {
+  billAmount: number;
+  breakdown: PreviewLine[] | null;
+  area: number | null;
+}
+
+const num = (v: number) => v.toLocaleString('mn-MN', { maximumFractionDigits: 2 });
+
+/** «3,500₮ × 11 м³» — мөр хэрхэн бодогдсоныг */
+function lineDetail(line: PreviewLine): string {
+  switch (line.unit) {
+    case 'PER_M3':
+      return `${num(line.rate)}₮ × ${num(line.qty)} м³`;
+    case 'PER_M2':
+      return `${num(line.rate)}₮ × ${num(line.qty)} м²`;
+    case 'PER_KWH':
+      return `${num(line.rate)}₮ × ${num(line.qty)} кВт·ц`;
+    case 'PERCENT':
+      return `${formatMnt(line.qty)}-ийн ${line.rate}%`;
+    default:
+      return '';
+  }
+}
+
+function PreviewBox({ preview }: { preview: Preview | { error: string } }) {
+  if ('error' in preview) {
+    return (
+      <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-900">
+        ⚠️ {preview.error}
+      </div>
+    );
+  }
+  // NUMBER (коэффициент, хоног) нь мөнгө биш — задаргаанд харуулахгүй
+  const lines = (preview.breakdown ?? []).filter((l) => l.unit !== 'NUMBER');
+  return (
+    <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+      <p className="mb-1.5 flex justify-between text-xs font-semibold uppercase tracking-wide text-slate-500">
+        <span>Урьдчилсан тооцоо</span>
+        {preview.area !== null && <span className="normal-case tracking-normal">Талбай {num(preview.area)} м²</span>}
+      </p>
+      <dl className="space-y-0.5 text-sm">
+        {lines.map((line) => (
+          <div key={line.code} className="flex justify-between gap-3">
+            <dt className="text-slate-700">
+              {line.label}
+              {lineDetail(line) && <span className="ml-1.5 text-xs text-slate-400">{lineDetail(line)}</span>}
+            </dt>
+            <dd className="tabular-nums text-slate-800">{formatMnt(line.amount)}</dd>
+          </div>
+        ))}
+        <div className="flex justify-between border-t border-slate-200 pt-1 font-bold text-slate-900">
+          <dt>Нийт</dt>
+          <dd className="tabular-nums">{formatMnt(preview.billAmount)}</dd>
+        </div>
+      </dl>
+    </div>
   );
 }

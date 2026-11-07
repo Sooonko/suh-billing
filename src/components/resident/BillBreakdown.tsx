@@ -5,11 +5,14 @@ import type { BillLineDetail } from '@/lib/types';
  * Оршин суугчид ХАРУУЛАХГҮЙ мөрүүд.
  *
  * СӨХ-ийн шийдвэр: суурь хураамж, ус халаалт, НӨАТ-ыг задаргаанд гаргахгүй.
+ * Дулааны суурь хураамж (2026-11-ээс) нь усны суурь хураамжтай ижил дүрмээр
+ * нуугдана. Харин м²-ээр бодогдох халаалт (HEAT_AREA) ХАРАГДАНА — айлын
+ * төлбөрийн хамгийн том хэсэг тул «яагаад ийм их вэ» гэдгийг тайлбарлана.
  *
  * ⚠️ Зөвхөн ХАРАГДАЦ. Эдгээр дүн «Нийт төлөх дүн»-д багтсан хэвээр —
  * задаргааны мөрүүдийн нийлбэр нийт дүнтэй тэнцэхгүй байж болно.
  */
-const HIDDEN_CODES = new Set(['BASE_FEE', 'HEATING', 'VAT']);
+const HIDDEN_CODES = new Set(['BASE_FEE', 'HEATING', 'HEAT_BASE_FEE', 'VAT']);
 
 /**
  * Нэхэмжлэлийн задаргаа — «яагаад ийм дүн гарав?»
@@ -35,6 +38,8 @@ export function BillBreakdown({ lines: allLines }: { lines: BillLineDetail[] }) 
               <span className="block text-xs text-slate-400">
                 {line.unit === 'PER_M3'
                   ? `${line.rate.toLocaleString('mn-MN')}₮ × ${line.qty} м³`
+                  : line.unit === 'PER_M2'
+                    ? `${line.rate.toLocaleString('mn-MN')}₮ × ${line.qty} м²`
                   : line.unit === 'PERCENT'
                     ? `${formatMnt(line.qty)}-ийн ${line.rate}%`
                     : ''}

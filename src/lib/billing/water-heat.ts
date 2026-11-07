@@ -13,7 +13,8 @@ import type { TariffUnit } from '@/lib/types';
  *   нийт м³      = халуун зөрүү + хүйтэн зөрүү
  *
  *   PER_M3 мөрүүд  = нийт м³ × тариф      (цэвэр ус, бохир ус)
- *   FIXED мөрүүд   = тариф                (суурь хураамж, ус халаалт)
+ *   PER_M2 мөрүүд  = айлын м² × тариф     (халаалт — 2026-11-ээс)
+ *   FIXED мөрүүд   = тариф                (суурь хураамж, ус халаалт, дулааны суурь)
  *   ─────────────────────────────────────
  *   дэд дүн        = дээрх бүгдийн нийлбэр
  *   PERCENT мөрүүд = дэд дүн × хувь       (НӨАТ)
@@ -41,7 +42,7 @@ export interface BillLine {
   unit: TariffUnit;
   /** Тухайн үед хүчинтэй байсан тариф — ХАДГАЛАГДАНА */
   rate: number;
-  /** Хэдэн нэгжид ноогдсон бэ. FIXED-д 1, PERCENT-д дэд дүн */
+  /** Хэдэн нэгжид ноогдсон бэ. PER_M3-д м³, PER_M2-д талбай, FIXED-д 1, PERCENT-д дэд дүн */
   qty: number;
   amount: number;
 }
@@ -68,12 +69,14 @@ export class WaterHeatError extends Error {}
 /**
  * Нэг айлын ус дулааны төлбөрийг бодно.
  *
- * @throws WaterHeatError  заалт буурсан үед (тоолуур солигдсон эсвэл
- *         буруу бичсэн). Дуугүй 0 болгохгүй — админ мэдэх ёстой.
+ * @param area  айлын талбай (м²) — PER_M2 тариф хүчинтэй сард заавал
+ * @throws WaterHeatError  заалт буурсан, эсвэл м² тариф байхад талбай
+ *         бүртгэгдээгүй үед. Дуугүй 0 болгохгүй — админ мэдэх ёстой.
  */
 export function calculateWaterHeat(
   readings: WaterReadings,
   tariffs: readonly TariffRow[],
+  area: number | null = null,
 ): WaterHeatBill {
   const hotUsage = money(readings.hotCurrent - readings.hotPrev);
   const coldUsage = money(readings.coldCurrent - readings.coldPrev);
@@ -88,10 +91,17 @@ export function calculateWaterHeat(
   const totalUsage = money(hotUsage + coldUsage);
   const lines: BillLine[] = [];
 
+  // Талбайгүй айлд халаалтыг 0 гэж бодвол тэр айл халаалтын төлбөргүй гарна
+  if (tariffs.some((t) => t.unit === 'PER_M2') && !(area !== null && area > 0)) {
+    throw new WaterHeatError('Айлын талбай (м²) бүртгэгдээгүй — халаалтын төлбөр бодох боломжгүй.');
+  }
+
   // 1. Хэрэглээнээс хамаарах ба тогтмол мөрүүд
   for (const tariff of tariffs) {
     if (tariff.unit === 'PER_M3') {
       lines.push({ ...tariff, qty: totalUsage, amount: money(totalUsage * tariff.rate) });
+    } else if (tariff.unit === 'PER_M2') {
+      lines.push({ ...tariff, qty: area!, amount: money(area! * tariff.rate) });
     } else if (tariff.unit === 'FIXED') {
       lines.push({ ...tariff, qty: 1, amount: money(tariff.rate) });
     }
