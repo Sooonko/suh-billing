@@ -97,6 +97,7 @@ export function ResidentDashboard({ data }: { data: ResidentDashboardData }) {
               hasMeter={activeMeta.hasMeter}
               flatNumber={data.flatNumber}
               account={data.accounts?.[activeState.category]}
+              area={data.area}
             />
           ) : (
             <div className="rounded-xl border border-dashed border-slate-300 bg-white/60 px-6 py-10 text-center text-sm text-slate-500">
@@ -118,6 +119,7 @@ export function ResidentDashboard({ data }: { data: ResidentDashboardData }) {
               label={label}
               flatNumber={data.flatNumber}
               account={data.accounts?.[key]}
+              area={data.area}
             />
           ) : (
             <div

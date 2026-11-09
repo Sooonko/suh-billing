@@ -86,6 +86,8 @@ export interface BillLineDetail {
 export interface ResidentDashboardData {
   flatNumber: number;
   ownerName: string | null;
+  /** Айлын талбай (м²) — халаалт м²-ээр бодогддог тул ус, дулааны картад */
+  area?: number | null;
   categories: FlatCategoryState[];
   /** Төлсөн баримтууд, шинэ нь эхэндээ */
   payments: PaymentEntry[];

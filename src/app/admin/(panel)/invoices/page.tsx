@@ -16,7 +16,7 @@ import { DEFAULT_PAGE_SIZE, paginate, parsePaging } from '@/lib/pagination';
 import { matchesSearch } from '@/lib/search-flat';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { formatBillingMonth } from '@/lib/format';
-import { CATEGORIES, CATEGORY_LABEL, type BillCategory } from '@/lib/types';
+import { CATEGORIES, CATEGORY_LABEL, type BillCategory, type BillLineDetail } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,13 +51,30 @@ const loadInvoiceMonths = unstable_cache(
   { tags: ['invoices'], revalidate: 600 },
 );
 
+/**
+ * Халаалтын мөрүүд — нэхэмжлэлд ХАДГАЛАГДСАН задаргаанаас.
+ *
+ * Талбайг flats-аас биш задаргаанаас авна: нэхэмжлэл БОДОГДОХ үеийн
+ * талбай, тариф харагдана. Хожим талбай засагдсан ч хуучин сарын дүн
+ * яагаад ийм гарсныг тайлбарлана.
+ */
+function heatingOf(breakdown: BillLineDetail[] | null) {
+  const area = breakdown?.find((l) => l.code === 'HEAT_AREA');
+  const base = breakdown?.find((l) => l.code === 'HEAT_BASE_FEE');
+  return {
+    area: area ? Number(area.qty) : null,
+    heat: area ? Number(area.amount) : null,
+    heat_base: base ? Number(base.amount) : null,
+  };
+}
+
 /** Нэг сар, нэг ангиллын нэхэмжлэл */
 async function fetchInvoices(category: BillCategory, month: string) {
   const db = createAdminClient();
   const { data } = await db
     .from('invoices')
     .select(
-      'id, category, billing_month, prev_reading, current_reading, hot_prev, hot_current, cold_prev, cold_current, usage_amount, bill_amount, note, flats!inner(flat_number, owner_name)',
+      'id, category, billing_month, prev_reading, current_reading, hot_prev, hot_current, cold_prev, cold_current, usage_amount, bill_amount, note, breakdown, flats!inner(flat_number, owner_name)',
     )
     .eq('category', category)
     .eq('billing_month', month)
@@ -150,6 +167,7 @@ export default async function AdminInvoicesPage({
       usage_amount: row.usage_amount === null ? null : Number(row.usage_amount),
       bill_amount: Number(row.bill_amount),
       note: row.note as string | null,
+      ...heatingOf(row.breakdown as BillLineDetail[] | null),
     };
   });
 
@@ -211,9 +229,15 @@ export default async function AdminInvoicesPage({
 
   // Excel матриц — Client Component-д функц дамжуулж болохгүй тул
   // толгой ба мөрүүдийг ЭНГИЙН массив болгож бэлдэнэ
+  // Халаалттай сар уу — тийм бол м², халаалт, суурь хураамжийн багана нэмэгдэнэ
+  const hasHeating = visible.some((i) => i.heat !== null || i.heat_base !== null);
   const exportHeaders =
     category === 'WATER_HEAT'
-      ? ['Тоот', 'Эзэн', 'Халуун өмнөх', 'Халуун одоо', 'Халуун зөрүү', 'Хүйтэн өмнөх', 'Хүйтэн одоо', 'Хүйтэн зөрүү', 'Нийт м³', 'Төлбөр']
+      ? [
+          'Тоот', 'Эзэн', 'Халуун өмнөх', 'Халуун одоо', 'Халуун зөрүү', 'Хүйтэн өмнөх', 'Хүйтэн одоо', 'Хүйтэн зөрүү', 'Нийт м³',
+          ...(hasHeating ? ['Талбай м²', 'Халаалт', 'Дулааны суурь'] : []),
+          'Төлбөр',
+        ]
       : category === 'ELECTRICITY'
         ? ['Тоот', 'Эзэн', 'Өмнөх заалт', 'Одоогийн заалт', 'Зөрүү', 'кВт·ц', 'Төлбөр']
         : ['Тоот', 'Эзэн', 'Төлбөр'];
@@ -223,7 +247,11 @@ export default async function AdminInvoicesPage({
 
   const exportRows: (string | number | null)[][] = visible.map((i) =>
     category === 'WATER_HEAT'
-      ? [i.flat_number, i.owner_name, i.hot_prev, i.hot_current, gap(i.hot_prev, i.hot_current), i.cold_prev, i.cold_current, gap(i.cold_prev, i.cold_current), i.usage_amount, i.bill_amount]
+      ? [
+          i.flat_number, i.owner_name, i.hot_prev, i.hot_current, gap(i.hot_prev, i.hot_current), i.cold_prev, i.cold_current, gap(i.cold_prev, i.cold_current), i.usage_amount,
+          ...(hasHeating ? [i.area, i.heat, i.heat_base] : []),
+          i.bill_amount,
+        ]
       : category === 'ELECTRICITY'
         ? [i.flat_number, i.owner_name, i.prev_reading, i.current_reading, gap(i.prev_reading, i.current_reading), i.usage_amount, i.bill_amount]
         : [i.flat_number, i.owner_name, i.bill_amount],
@@ -350,6 +378,7 @@ export default async function AdminInvoicesPage({
               count: visible.length,
               total: visible.reduce((sum, i) => sum + Number(i.bill_amount), 0),
               showOwner: visible.some((i) => i.owner_name),
+              hasHeating,
             }}
             pagination={
               <Pagination

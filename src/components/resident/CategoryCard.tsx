@@ -32,7 +32,13 @@ interface Props {
    * учир дамжуулахгүй.
    */
   label?: string;
+  /** Айлын талбай (м²) — зөвхөн ус, дулааны картад харагдана */
+  area?: number | null;
 }
+
+/** Халаалтын мөрүүдийн код — water-heat тарифтай ижил (schema.sql) */
+const HEAT_AREA = 'HEAT_AREA';
+const HEAT_BASE_FEE = 'HEAT_BASE_FEE';
 
 /** Нэг мөр өгөгдөл: шошго зүүн, утга баруун */
 function Row({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
@@ -52,7 +58,7 @@ function Row({ label, value, strong }: { label: string; value: string; strong?: 
  * "Нийт төлөх дүн" = balance. Энэ нь өмнөх бүх сарын өр + энэ сарын нэхэмжлэл −
  * төлсөн бүх мөнгө. Тиймээс илүү төлөлт аяндаа хасагдсан байдаг.
  */
-export function CategoryCard({ state, hasMeter, label, flatNumber, account }: Props) {
+export function CategoryCard({ state, hasMeter, label, flatNumber, account, area }: Props) {
   const {
     balance: rawBalance, bill_amount, billing_month, prev_reading, current_reading, usage_amount, status,
     hot_prev, hot_current, cold_prev, cold_current, breakdown, total_billed, total_paid,
@@ -70,6 +76,8 @@ export function CategoryCard({ state, hasMeter, label, flatNumber, account }: Pr
   // Ус дулаанд ХОЁР тоолуур. Заалт байгаа эсэхээр нь таньна — ангилал шалгахгүй,
   // ингэснээр хожим өөр ангилал хоёр тоолууртай болоход ч ажиллана.
   const hasTwoMeters = hot_current !== null || cold_current !== null;
+  /** Тухайн сарын халаалтын мөрүүд (м² ба суурь хураамж) — улирлын гадна хоосон */
+  const heatLines = (breakdown ?? []).filter((l) => l.code === HEAT_AREA || l.code === HEAT_BASE_FEE);
 
   /**
    * Өмнөх саруудын нэхэмжлэл = бүх нэхэмжлэл − энэ сарынх.
@@ -232,6 +240,39 @@ export function CategoryCard({ state, hasMeter, label, flatNumber, account }: Pr
               </tr>
             </tbody>
           </table>
+        )}
+
+        {/*
+          Дулаан — айлын талбай ба халаалтын үнэ. Халаалт м²-ээр бодогддог тул
+          талбайг нь харахгүй бол «яагаад ийм дүн» гэдгийг ойлгох боломжгүй.
+          Мөрүүдийг тухайн сарын задаргаанаас (тариф хадгалагдсан) авна.
+        */}
+        {state.category === 'WATER_HEAT' && (area || heatLines.length > 0) && (
+          <dl className="border-b border-slate-100 px-5 py-2 text-sm">
+            <dt className="pb-1 text-xs font-medium uppercase tracking-wide text-slate-400">Дулаан</dt>
+            {area ? (
+              <div className="flex items-baseline justify-between gap-4 py-1.5">
+                <dt className="text-slate-600">Талбай</dt>
+                <dd className="font-medium tabular-nums text-slate-900">{formatReading(area)} м²</dd>
+              </div>
+            ) : null}
+            {heatLines.map((line) => (
+              <div key={line.code} className="flex items-baseline justify-between gap-4 py-1.5">
+                <dt className="text-slate-600">
+                  {line.label}
+                  {line.code === HEAT_AREA && (
+                    <span className="block text-xs text-slate-400">
+                      {line.rate.toLocaleString('mn-MN')}₮ × {formatReading(line.qty)} м²
+                    </span>
+                  )}
+                </dt>
+                <dd className="font-medium tabular-nums text-slate-900">{formatMnt(line.amount)}</dd>
+              </div>
+            ))}
+            {heatLines.length === 0 && (
+              <p className="py-1 text-xs text-slate-400">Энэ сард халаалтын төлбөр бодогдоогүй</p>
+            )}
+          </dl>
         )}
 
         <dl className="flex-1 divide-y divide-slate-100 px-5 py-2">

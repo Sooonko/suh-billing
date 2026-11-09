@@ -33,7 +33,7 @@ export default async function FlatPage({ params }: { params: Promise<{ flat: str
 
   const { data: flatRow } = await db
     .from('flats')
-    .select('id, flat_number, owner_name')
+    .select('id, flat_number, owner_name, area')
     .eq('flat_number', flatNumber)
     .eq('is_active', true)
     .maybeSingle();
@@ -149,6 +149,7 @@ export default async function FlatPage({ params }: { params: Promise<{ flat: str
     accounts,
     flatNumber: flatRow.flat_number,
     ownerName: flatRow.owner_name,
+    area: flatRow.area === null ? null : Number(flatRow.area),
     categories: (states ?? []).map((s) => ({
       ...s,
       // numeric баганууд PostgREST-ээс ТЕКСТЭЭР ирдэг тул тоо болгоно

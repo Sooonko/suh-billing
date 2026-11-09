@@ -34,6 +34,13 @@ export interface InvoiceRow {
   usage_amount: number | null;
   bill_amount: number;
   note: string | null;
+  // ── халаалт (зөвхөн ус дулаан, улиралд) — задаргаанаас ──
+  /** Нэхэмжлэл бодогдох үеийн талбай (м²) */
+  area: number | null;
+  /** Халаалт = тариф × м² (НӨАТ-гүй) */
+  heat: number | null;
+  /** Дулааны суурь хураамж (НӨАТ-гүй) */
+  heat_base: number | null;
 }
 
 const show = (value: number | null) => (value === null ? '—' : String(value));
@@ -54,7 +61,16 @@ const CELL = 'px-2 py-2 text-right tabular-nums';
 const INPUT =
   'w-16 rounded border border-slate-300 px-1.5 py-1 text-right text-sm tabular-nums outline-none focus:border-slate-900';
 
-function WaterRow({ invoice, showOwner }: { invoice: InvoiceRow; showOwner: boolean }) {
+function WaterRow({
+  invoice,
+  showOwner,
+  hasHeating,
+}: {
+  invoice: InvoiceRow;
+  showOwner: boolean;
+  /** Халаалттай сар — м², халаалт, суурь хураамжийн 3 багана */
+  hasHeating: boolean;
+}) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -104,6 +120,15 @@ function WaterRow({ invoice, showOwner }: { invoice: InvoiceRow; showOwner: bool
           {diff(invoice.cold_prev, invoice.cold_current)}
         </td>
         <td className={`${CELL} font-semibold`}>{show(invoice.usage_amount)}</td>
+        {hasHeating && (
+          <>
+            <td className={`${CELL} border-l border-slate-100 text-slate-500`}>{show(invoice.area)}</td>
+            <td className={`${CELL} text-orange-800`}>{invoice.heat === null ? '—' : formatMnt(invoice.heat)}</td>
+            <td className={`${CELL} text-orange-800`}>
+              {invoice.heat_base === null ? '—' : formatMnt(invoice.heat_base)}
+            </td>
+          </>
+        )}
         <td className={`${CELL} font-semibold`}>{formatMnt(invoice.bill_amount)}</td>
         <td className="px-2 py-2 text-right">
           <div className="flex items-center justify-end gap-1.5">
@@ -181,6 +206,16 @@ function WaterRow({ invoice, showOwner }: { invoice: InvoiceRow; showOwner: bool
       </td>
 
       <td className={`${CELL} font-bold`}>{Number.isFinite(total) ? total : '—'}</td>
+      {/* Халаалт заалтаас хамаарахгүй — засварт өөрчлөгдөхгүй */}
+      {hasHeating && (
+        <>
+          <td className={`${CELL} text-slate-400`}>{show(invoice.area)}</td>
+          <td className={`${CELL} text-slate-400`}>{invoice.heat === null ? '—' : formatMnt(invoice.heat)}</td>
+          <td className={`${CELL} text-slate-400`}>
+            {invoice.heat_base === null ? '—' : formatMnt(invoice.heat_base)}
+          </td>
+        </>
+      )}
       <td className={`${CELL} text-xs text-slate-500`}>систем бодно</td>
 
       <td className="px-2 py-2">
@@ -387,7 +422,7 @@ export function InvoiceList({
   /** 'YYYY-MM' — баганын толгойд «8 сар / 9 сар» гэж бичихэд хэрэглэнэ */
   month: string;
   /** Шүүсэн БҮХ мөрийн тоо, дүн — хуудаслалтаас үл хамаарна */
-  summary: { count: number; total: number; showOwner: boolean };
+  summary: { count: number; total: number; showOwner: boolean; hasHeating?: boolean };
   /** Хүснэгтийн доорх хуудаслалт */
   pagination?: React.ReactNode;
 }) {
@@ -401,6 +436,7 @@ export function InvoiceList({
    */
   // БҮХ мөрөөр шийднэ — хуудас бүрээр шийдвэл багана хуудас солиход гарч/алга болно
   const showOwner = summary.showOwner;
+  const hasHeating = isWater && Boolean(summary.hasHeating);
 
   if (invoices.length === 0) {
     return (
@@ -423,7 +459,9 @@ export function InvoiceList({
                 {/* Excel шиг бүлгийн мөр — аль тоолуур болох нь нэг харцаар мэдэгдэнэ */}
                 <tr className="border-b border-slate-200">
                   <th className="px-3 py-1.5" />
-                  <th className="px-2 py-1.5" />
+                  {/* Эзэн багана нуугдсан үед хоосон нүд ч БАЙХГҮЙ — эс бөгөөс
+                      «Халуун ус» бүлэг нэг баганаар зөрж харагддаг байв */}
+                  {showOwner && <th className="px-2 py-1.5" />}
                   <th colSpan={3} className="border-x border-slate-200 bg-rose-50/70 px-2 py-1.5 text-center font-bold text-rose-900">
                     Халуун ус
                   </th>
@@ -431,6 +469,11 @@ export function InvoiceList({
                     Хүйтэн ус
                   </th>
                   <th className="px-2 py-1.5" />
+                  {hasHeating && (
+                    <th colSpan={3} className="border-x border-slate-200 bg-orange-50/70 px-2 py-1.5 text-center font-bold text-orange-900">
+                      Дулаан
+                    </th>
+                  )}
                   <th className="px-2 py-1.5" />
                   <th className="px-2 py-1.5" />
                 </tr>
@@ -444,6 +487,13 @@ export function InvoiceList({
                   <th className="px-2 py-2 text-right font-medium">{currentLabel}</th>
                   <th className="px-2 py-2 text-right font-medium">зөрүү</th>
                   <th className="px-2 py-2 text-right font-medium">нийт м³</th>
+                  {hasHeating && (
+                    <>
+                      <th className="px-2 py-2 text-right font-medium">м²</th>
+                      <th className="px-2 py-2 text-right font-medium">халаалт</th>
+                      <th className="px-2 py-2 text-right font-medium">суурь</th>
+                    </>
+                  )}
                   <th className="px-2 py-2 text-right font-medium">төлбөр</th>
                   <th className="px-2 py-2" />
                 </tr>
@@ -488,7 +538,7 @@ export function InvoiceList({
           <tbody className="divide-y divide-slate-100 [&>tr:nth-child(even)]:bg-slate-50/50">
             {invoices.map((invoice) =>
               isWater ? (
-                <WaterRow key={invoice.id} invoice={invoice} showOwner={showOwner} />
+                <WaterRow key={invoice.id} invoice={invoice} showOwner={showOwner} hasHeating={hasHeating} />
               ) : (
                 <PlainRow key={invoice.id} invoice={invoice} isMetered={isMetered} showOwner={showOwner} />
               ),
