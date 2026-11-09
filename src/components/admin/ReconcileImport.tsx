@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { useConfirm } from '@/components/ui/Feedback';
 import { callApi } from '@/lib/api-client';
 import { formatMnt } from '@/lib/format';
+import { sameAccount, statementAccountFrom } from '@/lib/matching/parse-statement';
 import { readSheetRows } from '@/lib/read-sheet';
 import { RECIPIENT_LABEL, type NewTransfer } from '@/lib/transfers';
 import { CATEGORY_LABEL, type BankAccount, type BillCategory } from '@/lib/types';
@@ -80,10 +81,18 @@ export function ReconcileImport({ accounts }: { accounts: BankAccount[] }) {
   const [rows, setRows] = useState<Record<string, unknown>[] | null>(null);
   /** Толгой Excel дээр хэддүгээр мөрөнд байсан бэ — мөрийн дугаарыг зөв гаргахад */
   const [headerRow, setHeaderRow] = useState(1);
+  /** Хуулгын толгойд бичигдсэн дансны дугаар — сонгосон данстай тулгана */
+  const [statementAccount, setStatementAccount] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [result, setResult] = useState<CommitResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<'read' | 'preview' | 'commit' | null>(null);
+
+  /** Хуулгын данс сонгосон данстай зөрж байна — сервер ч татгалзана */
+  const selectedAccount = accounts.find((a) => a.id === bankAccountId);
+  const accountMismatch = Boolean(
+    statementAccount && selectedAccount && !sameAccount(statementAccount, selectedAccount.account_number),
+  );
 
   function reset() {
     setPreview(null);
@@ -100,9 +109,14 @@ export function ReconcileImport({ accounts }: { accounts: BankAccount[] }) {
     setFileName(file.name);
 
     try {
-      const { rows: parsed, headerRow: header } = await readSheetRows(file);
+      const { rows: parsed, headerRow: header, preamble } = await readSheetRows(file);
       setRows(parsed);
       setHeaderRow(header);
+      // Хуулгад данс бичигдсэн бол тохирох дансыг ӨӨРӨӨ сонгоно
+      const fromFile = statementAccountFrom(preamble);
+      setStatementAccount(fromFile);
+      const owner = fromFile ? accounts.find((a) => sameAccount(fromFile, a.account_number)) : undefined;
+      if (owner) setBankAccountId(owner.id);
       if (!parsed.length) setError('Файл хоосон байна');
     } catch {
       setError('Excel файл уншигдсангүй. .xlsx эсвэл .csv байх ёстой.');
@@ -119,7 +133,7 @@ export function ReconcileImport({ accounts }: { accounts: BankAccount[] }) {
 
     const result = await callApi<Preview | CommitResult>(`/api/admin/reconcile/${step}`, {
       method: 'POST',
-      json: { bankAccountId, rows, headerRow },
+      json: { bankAccountId, rows, headerRow, statementAccount },
     });
     setBusy(null);
 
@@ -201,13 +215,32 @@ export function ReconcileImport({ accounts }: { accounts: BankAccount[] }) {
               📄 {fileName} — <span className="font-semibold">{rows.length}</span> мөр уншсан
             </p>
           )}
+          {fileName && rows && statementAccount && (() => {
+            const selected = accounts.find((a) => a.id === bankAccountId);
+            const matches = selected && sameAccount(statementAccount, selected.account_number);
+            const owner = accounts.find((a) => sameAccount(statementAccount, a.account_number));
+            return matches ? (
+              <p className="mt-1 text-sm text-emerald-700">
+                ✓ Хуулгын данс …{statementAccount.slice(-4)} — «{CATEGORY_LABEL[selected.category] ?? selected.display_name}»
+                данстай таарч байна
+              </p>
+            ) : (
+              <p role="alert" className="mt-2 rounded-lg border-2 border-red-400 bg-red-50 p-3 text-sm font-medium text-red-900">
+                ⛔ Хуулгын данс …{statementAccount.slice(-4)}{' '}
+                {owner
+                  ? `«${CATEGORY_LABEL[owner.category] ?? owner.display_name}» дансных байна.`
+                  : 'бүртгэлтэй дансны алинтай нь ч таарахгүй байна.'}{' '}
+                Сонгосон данстай таарахгүй тул оруулах боломжгүй.
+              </p>
+            );
+          })()}
         </div>
 
         {rows && rows.length > 0 && !preview && !result && (
           <button
             type="button"
             onClick={() => send('preview')}
-            disabled={busy !== null || !bankAccountId}
+            disabled={busy !== null || !bankAccountId || accountMismatch}
             className="mt-5 w-full rounded-lg bg-slate-900 px-4 py-3 font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50 sm:w-auto sm:px-8"
           >
             {busy === 'preview' ? 'Тулгаж байна…' : 'Тулгаж харах'}

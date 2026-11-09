@@ -229,3 +229,59 @@ export async function parseStatement(
 
   return { transactions, skipped, columns };
 }
+
+/**
+ * Хуулгын толгойн дээрх мөрөөс ДАНСНЫ ДУГААРЫГ олох.
+ *
+ *   Хуулганы огноо | … | Дансны дугаар | 1175205621 [MNT] | IBAN | MN11 0015 0011 7520 5621
+ *
+ * «Дансны дугаар» эсвэл «IBAN» гэсэн нүдний ДАРААХ нүдийг авна. Олдохгүй
+ * бол null — тэр банк дансаа бичдэггүй, шалгалт хийх боломжгүй.
+ */
+export function statementAccountFrom(preamble: unknown[][]): string | null {
+  for (const row of preamble) {
+    for (let i = 0; i < row.length - 1; i++) {
+      const label = String(row[i] ?? '').toLowerCase().trim();
+      if (label !== 'дансны дугаар' && label !== 'iban') continue;
+      const digits = String(row[i + 1] ?? '').replace(/\D/g, '');
+      if (digits.length >= 8) return digits;
+    }
+  }
+  return null;
+}
+
+/**
+ * Хоёр дансны дугаар ИЖИЛ данс уу — сүүлийн 10 оронгоор.
+ *
+ * Хуулга «1175205621», DB «MN11 0015 0011 7520 5621» (IBAN) гэж өөр
+ * хэлбэрээр бичигдэж болно. IBAN-ы сүүлийн 10 орон нь дансны дугаар.
+ */
+export function sameAccount(a: string, b: string): boolean {
+  const tail = (v: string) => v.replace(/\D/g, '').slice(-10);
+  const x = tail(a);
+  return x.length >= 8 && x === tail(b);
+}
+
+/**
+ * Хуулга СОНГОСОН данснаас мөн эсэхийг шалгана. Буруу бол админд харуулах
+ * алдааны мессеж, зөв (эсвэл хуулгад данс бичигдээгүй) бол null.
+ *
+ * ЯАГААД ХААЖ БАЙГАА ВЭ (зөвхөн анхааруулга биш): «Цахилгаан» сонгоод СӨХ
+ * дансны хуулга оруулахад бүх төлбөр цахилгааны өрөөс хасагдаж, айлууд
+ * СӨХ-дөө өртэй, цахилгаандаа илүү төлсөн харагддаг. Засахад гүйлгээ
+ * бүрийг гараар шилжүүлэх шаардлагатай — орохоос нь сэргийлэх нь хялбар.
+ */
+export function statementAccountError(
+  statementAccount: string | null | undefined,
+  selected: { account_number: string; display_name: string },
+  all: { account_number: string; display_name: string }[],
+): string | null {
+  if (!statementAccount) return null;
+  if (sameAccount(statementAccount, selected.account_number)) return null;
+
+  const tail = statementAccount.slice(-4);
+  const owner = all.find((a) => sameAccount(statementAccount, a.account_number));
+  return owner
+    ? `Энэ хуулга «${owner.display_name}» дансных (…${tail}). Та «${selected.display_name}» данс сонгосон байна — зөв дансаа сонгоод дахин оруулна уу.`
+    : `Хуулгын данс (…${tail}) бүртгэлтэй дансны алинтай нь ч таарахгүй байна. Өөр байгууллагын хуулга биш эсэхийг шалгана уу.`;
+}

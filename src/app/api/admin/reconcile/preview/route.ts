@@ -5,7 +5,7 @@ import { requireAdmin } from '@/lib/supabase/server';
 import { detectCategoryHint } from '@/lib/matching/detect-category';
 import { findExistingHashes } from '@/lib/matching/find-duplicates';
 import { overpayOf } from '@/lib/money';
-import { parseStatement, type RawRow } from '@/lib/matching/parse-statement';
+import { parseStatement, statementAccountError, type RawRow } from '@/lib/matching/parse-statement';
 import { extractStatementTransfers } from '@/lib/transfers';
 import { findDuplicateTransfers } from '@/lib/transfers-db';
 import type { BillCategory } from '@/lib/types';
@@ -26,9 +26,11 @@ export async function POST(request: Request) {
   const admin = await requireAdmin();
   if (!admin) return NextResponse.json({ error: 'Нэвтрээгүй байна' }, { status: 401 });
 
-  const { bankAccountId, rows } = (await request.json()) as {
+  const { bankAccountId, rows, statementAccount } = (await request.json()) as {
     bankAccountId?: string;
     rows?: RawRow[];
+    /** Хуулгын толгойноос уншсан дансны дугаар (`statementAccountFrom`) */
+    statementAccount?: string | null;
   };
 
   if (!bankAccountId || !Array.isArray(rows)) {
@@ -41,13 +43,19 @@ export async function POST(request: Request) {
   //    гүйлгээний утгаас категори таах ШААРДЛАГАГҮЙ.
   const { data: account, error: accountError } = await db
     .from('bank_accounts')
-    .select('id, category, display_name')
+    .select('id, category, display_name, account_number')
     .eq('id', bankAccountId)
     .single();
 
   if (accountError || !account) {
     return NextResponse.json({ error: 'Данс олдсонгүй' }, { status: 404 });
   }
+
+  // Хуулга сонгосон данснаас мөн эсэх — буруу бол ОГТ оруулахгүй
+  const { data: allAccounts } = await db.from('bank_accounts').select('account_number, display_name');
+  const wrongAccount = statementAccountError(statementAccount, account, allAccounts ?? []);
+  if (wrongAccount) return NextResponse.json({ error: wrongAccount }, { status: 400 });
+
   const category = account.category as BillCategory;
 
   // 2. Бүх жинхэнэ тоот — тоот таних баталгаажуулалтын түлхүүр

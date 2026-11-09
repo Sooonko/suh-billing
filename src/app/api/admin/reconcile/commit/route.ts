@@ -4,7 +4,7 @@ import { buildNameIndex } from '@/lib/matching/parse-flat';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { requireAdmin } from '@/lib/supabase/server';
 import { findExistingHashes } from '@/lib/matching/find-duplicates';
-import { parseStatement, type RawRow } from '@/lib/matching/parse-statement';
+import { parseStatement, statementAccountError, type RawRow } from '@/lib/matching/parse-statement';
 import { extractStatementTransfers } from '@/lib/transfers';
 import { insertTransfers } from '@/lib/transfers-db';
 import type { BillCategory } from '@/lib/types';
@@ -24,9 +24,11 @@ export async function POST(request: Request) {
   const admin = await requireAdmin();
   if (!admin) return NextResponse.json({ error: 'Нэвтрээгүй байна' }, { status: 401 });
 
-  const { bankAccountId, rows } = (await request.json()) as {
+  const { bankAccountId, rows, statementAccount } = (await request.json()) as {
     bankAccountId?: string;
     rows?: RawRow[];
+    /** Хуулгын толгойноос уншсан дансны дугаар (`statementAccountFrom`) */
+    statementAccount?: string | null;
   };
   if (!bankAccountId || !Array.isArray(rows)) {
     return NextResponse.json({ error: 'bankAccountId болон rows шаардлагатай' }, { status: 400 });
@@ -36,10 +38,15 @@ export async function POST(request: Request) {
 
   const { data: account } = await db
     .from('bank_accounts')
-    .select('id, category')
+    .select('id, category, display_name, account_number')
     .eq('id', bankAccountId)
     .single();
   if (!account) return NextResponse.json({ error: 'Данс олдсонгүй' }, { status: 404 });
+
+  // Хуулга сонгосон данснаас мөн эсэх — буруу бол ОГТ оруулахгүй
+  const { data: allAccounts } = await db.from('bank_accounts').select('account_number, display_name');
+  const wrongAccount = statementAccountError(statementAccount, account, allAccounts ?? []);
+  if (wrongAccount) return NextResponse.json({ error: wrongAccount }, { status: 400 });
 
   const category = account.category as BillCategory;
 

@@ -1,6 +1,13 @@
 import * as XLSX from 'xlsx';
 import { gridToRows } from '@/lib/read-sheet';
-import { dedupeHash, detectColumns, parseDate, parseStatement } from './parse-statement';
+import {
+  dedupeHash,
+  detectColumns,
+  parseDate,
+  parseStatement,
+  statementAccountError,
+  statementAccountFrom,
+} from './parse-statement';
 
 /**
  * Банкны хуулгын задлагчийн тест — гол асуулт: ЗАРЛАГА ялгарч байна уу?
@@ -195,4 +202,37 @@ ${pass ? '✅' : '❌'} Толгойн дээрх мэдээллийн мөри�
   console.log(`   Толгой: ${headerRow}-р мөр (хүлээсэн 2) · бүртгэх ${result.transactions.length} (хүлээсэн 1)`);
 }
 
-dedupeChecks().then(timezoneChecks).then(metadataRowCheck);
+/**
+ * ── Буруу дансны хуулга ──────────────────────────────────────────────────
+ *
+ * «Цахилгаан» сонгоод ус дулааны хуулга оруулахад төлбөрүүд буруу ангилалд
+ * орж байв. Хуулгын толгой дахь дансны дугаараар ХААНА.
+ */
+function wrongAccountCheck() {
+  const preamble = [
+    ['Хуулганы огноо', '2026-11-08', 'ДАНСНЫ ХУУЛГА', 'Харилцагчийн нэр', 'ПИЙС ', 'Гүйлгээний огноо',
+      '2026-11-01 - 2026-11-08', 'Дансны дугаар', '1175205621 [MNT]', 'IBAN', 'MN11 0015 0011 7520 5621'],
+  ];
+  const accounts = [
+    { account_number: 'MN11 0015 0011 7520 5621', display_name: 'Ус, дулаан' },
+    { account_number: 'MN81 0015 0011 7520 5622', display_name: 'СӨХ' },
+    { account_number: 'MN38 0015 0011 7520 5620', display_name: 'Цахилгаан' },
+  ];
+  const account = statementAccountFrom(preamble);
+  const cases: [string, boolean][] = [
+    ['толгойноос дансны дугаар уншина', account === '1175205621'],
+    ['зөв данс (IBAN-тай тулгаж) → зөвшөөрнө', statementAccountError(account, accounts[0], accounts) === null],
+    ['цахилгаан сонгосон → татгалзана', /Ус, дулаан/.test(statementAccountError(account, accounts[2], accounts) ?? '')],
+    ['СӨХ сонгосон → татгалзана', statementAccountError(account, accounts[1], accounts) !== null],
+    ['хуулгад данс бичигдээгүй → шалгахгүй', statementAccountError(null, accounts[2], accounts) === null],
+  ];
+  console.log('\nБуруу дансны хуулга:');
+  let ok = 0;
+  for (const [name, pass] of cases) {
+    if (pass) ok++;
+    console.log(`  ${pass ? '✅' : '❌'} ${name}`);
+  }
+  console.log(`\n${ok}/${cases.length} дансны тохиолдол зөв`);
+}
+
+dedupeChecks().then(timezoneChecks).then(metadataRowCheck).then(wrongAccountCheck);

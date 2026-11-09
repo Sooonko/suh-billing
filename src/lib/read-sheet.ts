@@ -119,6 +119,8 @@ export interface SheetData {
   rows: Record<string, unknown>[];
   /** Толгой Excel дээр хэддүгээр мөрөнд байсан бэ (1-ээс эхэлсэн дугаар) */
   headerRow: number;
+  /** Толгойн дээрх мөрүүд */
+  preamble: unknown[][];
 }
 
 /**
@@ -138,8 +140,13 @@ export interface SheetData {
  * хийгдэнэ. Тест ч, бодит импорт ч ижил функц дуудна — эс бөгөөс тест
  * ажиллаад бодит файл унах эрсдэлтэй.
  */
-export function gridToRows(grid: unknown[][]): { rows: Record<string, unknown>[]; headerRow: number } {
-  if (!grid.length) return { rows: [], headerRow: 1 };
+export function gridToRows(grid: unknown[][]): {
+  rows: Record<string, unknown>[];
+  headerRow: number;
+  /** Толгойн ДЭЭРХ мөрүүд — банкны хуулгад дансны дугаар энд байдаг */
+  preamble: unknown[][];
+} {
+  if (!grid.length) return { rows: [], headerRow: 1, preamble: [] };
 
   const headerIndex = findHeaderRow(grid);
   const headers = uniqueHeaders(fillFromAbove(grid, headerIndex));
@@ -152,7 +159,7 @@ export function gridToRows(grid: unknown[][]): { rows: Record<string, unknown>[]
     return record;
   });
 
-  return { rows, headerRow: headerIndex + 1 };
+  return { rows, headerRow: headerIndex + 1, preamble: grid.slice(0, headerIndex) };
 }
 
 export async function readSheets(file: File): Promise<SheetData[]> {
@@ -164,7 +171,7 @@ export async function readSheets(file: File): Promise<SheetData[]> {
 
   return workbook.SheetNames.map((name) => {
     const sheet = workbook.Sheets[name];
-    if (!sheet) return { name, rows: [], headerRow: 1 };
+    if (!sheet) return { name, rows: [], headerRow: 1, preamble: [] };
 
     // Эхлээд ЦЭВЭР сараалж уншина — толгой хаана байгааг өөрсдөө шийднэ
     const grid = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
@@ -180,7 +187,7 @@ export async function readSheets(file: File): Promise<SheetData[]> {
 /** Нэг sheet-тэй файлд (банкны хуулга) — зөвхөн эхний табыг авна */
 export async function readSheetRows(file: File): Promise<SheetData> {
   const sheets = await readSheets(file);
-  return sheets[0] ?? { name: '', rows: [], headerRow: 1 };
+  return sheets[0] ?? { name: '', rows: [], headerRow: 1, preamble: [] };
 }
 
 /**
