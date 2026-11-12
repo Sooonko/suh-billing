@@ -109,7 +109,6 @@ export function PaymentList({ payments }: { payments: PaymentEntry[] }) {
   const rows = payments.filter(
     (p) => (month === '' || p.month === month) && (category === '' || p.category === category),
   );
-  const total = rows.reduce((sum, p) => sum + p.amount, 0);
 
   return (
     <div>
@@ -280,10 +279,6 @@ export function PaymentList({ payments }: { payments: PaymentEntry[] }) {
               </tbody>
             </table>
 
-            <div className="flex items-baseline justify-between border-t border-slate-200 bg-slate-50 px-4 py-3">
-              <span className="text-sm text-slate-600">{rows.length} төлбөр</span>
-              <span className="font-bold tabular-nums text-emerald-700">{formatMnt(total)}</span>
-            </div>
           </>
         )}
       </div>
