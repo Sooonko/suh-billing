@@ -164,7 +164,12 @@ export function parseWaterInvoices(
     if (flatNumber === null) {
       // Бүрэн хоосон мөрийг чимээгүй алгасна (Excel-ийн сүүл, "нийт" мөр л үлдэнэ)
       const isBlank = Object.values(row).every((v) => v === null || v === undefined || v === '');
-      if (!isBlank) skipped.push({ rowIndex, raw, reason: 'Тоот танигдсангүй' });
+      // Тоотгүй, заалтгүй мөр — Excel-ийн «нийт» мөр (зөвхөн нийлбэр дүнтэй).
+      // Заалттай атлаа тоотгүй мөрийг харин ЗААВАЛ мэдэгдэнэ — датаны алдаа.
+      const readingCells = [columns.hotPrev, columns.hotCurrent, columns.coldPrev, columns.coldCurrent];
+      const isTotalsRow =
+        !raw && readingCells.every((c) => !c || String(row[c] ?? '').trim() === '');
+      if (!isBlank && !isTotalsRow) skipped.push({ rowIndex, raw, reason: 'Тоот танигдсангүй' });
       continue;
     }
 

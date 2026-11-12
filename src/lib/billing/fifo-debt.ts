@@ -118,6 +118,15 @@ export interface Coverage {
    * байв.
    */
   billed: number;
+  /**
+   * Энэ төлбөр ирэхээс ӨМНӨ тэр сарын хаагдаагүй үлдэгдэл — өмнөх
+   * илүү төлөлтийг (`credit`) хассаны дараах дүн.
+   */
+  before: number;
+  /** Өмнөх төлбөрүүдийн ИЛҮҮ ТӨЛӨЛТӨӨС энэ сард хасагдсан дүн (0 бол байхгүй) */
+  credit: number;
+  /** Энэ төлбөрийн ДАРАА үлдсэн өр (0 = бүрэн төлөгдсөн) */
+  after: number;
 }
 
 /**
@@ -163,11 +172,33 @@ export function allocatePaymentsToMonths(
       .filter((p) => p.category === category)
       .sort((a, b) => a.date.localeCompare(b.date));
 
+    /**
+     * Өмнөх төлбөрүүдээс АЛЬ Ч САРД оногдоогүй үлдсэн мөнгө (илүү төлөлт).
+     *
+     * ⚠️ Үүнийг дараагийн нэхэмжлэлд ЗААВАЛ шилжүүлнэ. Шилжүүлэхгүй бол
+     * 8 сард 2,098₮ илүү төлсөн айлын 10 сарын нэхэмжлэл «2,098₮ дутуу»
+     * гэж харагдаж байв — нийт үлдэгдэл (`splitDebtByMonth`) 0 байхад.
+     */
+    let credit = 0;
+    /** Сар бүрт илүү төлөлтөөс хэд хасагдсаныг — тухайн сарыг хассан төлбөрт харуулна */
+    const creditBySlot = new Map<string, number>();
+
     for (const payment of mine) {
       let pool = payment.amount;
       const covers: Coverage[] = [];
       /** Төлбөр хийгдсэн сар — түүнээс хойшхи нэхэмжлэл тэр үед байгаагүй */
       const paidMonth = payment.date.slice(0, 7);
+
+      // Эхлээд өмнөх илүү төлөлтийг энэ үед байгаа нэхэмжлэлүүдэд хасна
+      for (const slot of open) {
+        if (credit < 1) break;
+        if (slot.month > paidMonth) break;
+        if (slot.left < 1) continue;
+        const take = Math.min(credit, slot.left);
+        slot.left = money(slot.left - take);
+        credit = money(credit - take);
+        creditBySlot.set(slot.month, money((creditBySlot.get(slot.month) ?? 0) + take));
+      }
 
       for (const slot of open) {
         // Ирээдүйн сарын нэхэмжлэлийг хаах боломжгүй
@@ -178,10 +209,23 @@ export function allocatePaymentsToMonths(
         if (pool < 1) break;
         if (slot.left < 1) continue;
         const take = Math.min(pool, slot.left);
+        const before = money(slot.left);
         slot.left = money(slot.left - take);
         pool = money(pool - take);
-        covers.push({ month: slot.month, amount: money(take), billed: money(slot.billed) });
+        const fromCredit = creditBySlot.get(slot.month) ?? 0;
+        creditBySlot.delete(slot.month);
+        covers.push({
+          month: slot.month,
+          amount: money(take),
+          billed: money(slot.billed),
+          before,
+          credit: fromCredit,
+          after: slot.left,
+        });
       }
+
+      // Энэ төлбөрөөс үлдсэн нь дараагийн нэхэмжлэлд шилжинэ
+      credit = money(credit + pool);
 
       result.set(payment.id, covers);
     }

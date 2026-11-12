@@ -29,33 +29,33 @@ export function DebtBreakdown({ debts }: { debts: DebtRow[] }) {
       <h2 className="mb-3 text-lg font-bold tracking-tight text-slate-900">Өр үүссэн сарууд</h2>
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+        <table className="w-full text-[13px] sm:text-sm">
+          <thead className="bg-slate-50 text-[11px] text-slate-500 sm:text-xs sm:uppercase sm:tracking-wide">
             <tr className="border-b border-slate-200">
-              <th className="px-4 py-2 text-left font-medium">Сар</th>
-              <th className="px-3 py-2 text-left font-medium">Ангилал</th>
-              <th className="hidden px-3 py-2 text-right font-medium sm:table-cell">Нэхэмжилсэн</th>
-              <th className="px-4 py-2 text-right font-medium">Үлдэгдэл</th>
+              <th className="px-3 py-2 text-left font-medium sm:px-4">Сар</th>
+              <th className="px-2 py-2 text-left font-medium sm:px-3">Ангилал</th>
+              <th className="px-2 py-2 text-right font-medium sm:px-3">Нэхэмжилсэн</th>
+              <th className="px-3 py-2 text-right font-medium sm:px-4">Үлдэгдэл</th>
             </tr>
           </thead>
 
           <tbody className="divide-y divide-slate-100">
             {debts.map((debt) => (
               <tr key={`${debt.month}-${debt.category}`}>
-                <td className="whitespace-nowrap px-4 py-2.5 text-slate-600">
+                <td className="whitespace-nowrap px-3 py-2.5 text-slate-600 sm:px-4">
                   {formatBillingMonth(debt.month).replace(/^\d{4} оны /, '')}
                 </td>
-                <td className="px-3 py-2.5">
+                <td className="px-2 py-2.5 sm:px-3">
                   <span
-                    className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${TONE[debt.category]}`}
+                    className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-bold sm:px-2.5 ${TONE[debt.category]}`}
                   >
                     {CATEGORY_LABEL[debt.category]}
                   </span>
                 </td>
-                <td className="hidden px-3 py-2.5 text-right tabular-nums text-slate-500 sm:table-cell">
+                <td className="whitespace-nowrap px-2 py-2.5 text-right tabular-nums text-slate-500 sm:px-3">
                   {formatMnt(debt.billed)}
                 </td>
-                <td className="whitespace-nowrap px-4 py-2.5 text-right font-semibold tabular-nums text-red-700">
+                <td className="whitespace-nowrap px-3 py-2.5 text-right font-semibold tabular-nums text-red-700 sm:px-4">
                   {formatMnt(debt.remaining)}
                 </td>
               </tr>

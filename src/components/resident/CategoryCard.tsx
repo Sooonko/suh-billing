@@ -87,6 +87,8 @@ export function CategoryCard({ state, hasMeter, label, flatNumber, account, area
    * сар төлсөн төлбөр «өмнөх илүү төлөлт» болж харагддаг байсан.
    */
   const previousBilled = Math.round((total_billed - (bill_amount ?? 0)) * 100) / 100;
+  /** Өмнөх нэхэмжлэлүүдээс төлсөн мөнгийг хассан цэвэр дүн */
+  const carried = Math.round((previousBilled - total_paid) * 100) / 100;
 
   // Заалтын баганын толгойд бичих сарууд — «8 сар», «9 сар»
   const currentLabel = shortMonth(billing_month);
@@ -283,10 +285,19 @@ export function CategoryCard({ state, hasMeter, label, flatNumber, account, area
               {formatMnt(bill_amount)}
             </dd>
           </div>
-          {previousBilled !== 0 && (
-            <Row label="Өмнөх саруудын нэхэмжлэл" value={formatMnt(previousBilled)} />
+          {/*
+            «Өмнөх саруудын нэхэмжлэл 233,901 · Төлсөн −233,901» гэсэн хоёр
+            том тоо оршин суугчийг төөрөгдүүлдэг тул ЦЭВЭР дүнг нэг мөрөөр:
+              > 0 → өмнөх саруудаас үлдсэн өр
+              < 0 → өмнөх нэхэмжлэлээс ИЛҮҮ төлсөн (энэ сард хэсэгчлэн төлсөн ч энд)
+              0   → мөр харагдахгүй
+          */}
+          {Math.abs(carried) >= 0.5 && (
+            <Row
+              label={carried > 0 ? 'Өмнөх саруудын үлдэгдэл' : 'Төлсөн'}
+              value={carried > 0 ? formatMnt(carried) : `−${formatMnt(-carried)}`}
+            />
           )}
-          <Row label="Төлсөн" value={total_paid === 0 ? '—' : `−${formatMnt(total_paid)}`} />
         </dl>
 
         {/* Нийт төлөх дүн — хамгийн чухал тоо тул онцлон харуулна */}
@@ -327,8 +338,9 @@ export function CategoryCard({ state, hasMeter, label, flatNumber, account, area
         )}
       </div>
 
+      {/* Ус, дулаанд бүх мөр + нийт; бусад ангилалд өмнөх шигээ */}
       {breakdown && breakdown.length > 0 ? (
-        <BillBreakdown lines={breakdown} />
+        <BillBreakdown lines={breakdown} total={bill_amount} full={state.category === 'WATER_HEAT'} />
       ) : (
         <div className="hidden lg:block" />
       )}
