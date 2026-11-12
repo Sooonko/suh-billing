@@ -127,7 +127,7 @@ export function PayPanel({
         onClick={() => setOpen(true)}
         className="mt-3 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 active:scale-[0.99]"
       >
-        Төлбөр төлөх · {formatMnt(amount)}
+        Төлбөр төлөх
       </button>
     );
   }

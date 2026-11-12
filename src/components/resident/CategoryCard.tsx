@@ -277,28 +277,28 @@ export function CategoryCard({ state, hasMeter, label, flatNumber, account, area
           </dl>
         )}
 
-        <dl className="flex-1 divide-y divide-slate-100 px-5 py-2">
-          {/* Энэ сарын нэхэмжлэл — хамгийн чухал мөр тул онцолно */}
-          <div className="-mx-5 flex items-baseline justify-between gap-4 bg-amber-50 px-5 py-2.5">
-            <dt className="text-sm font-semibold text-amber-900">Энэ сарын нэхэмжлэл</dt>
-            <dd className="text-base font-bold tabular-nums text-amber-900">
-              {formatMnt(bill_amount)}
-            </dd>
-          </div>
-          {/*
-            «Өмнөх саруудын нэхэмжлэл 233,901 · Төлсөн −233,901» гэсэн хоёр
-            том тоо оршин суугчийг төөрөгдүүлдэг тул ЦЭВЭР дүнг нэг мөрөөр:
-              > 0 → өмнөх саруудаас үлдсэн өр
-              < 0 → өмнөх нэхэмжлэлээс ИЛҮҮ төлсөн (энэ сард хэсэгчлэн төлсөн ч энд)
-              0   → мөр харагдахгүй
-          */}
+        {/*
+          «Энэ сарын нэхэмжлэл» мөрийг ТУСАД НЬ харуулахгүй (СӨХ-ийн шийдвэр) —
+          өмнөх өр/илүү төлөлт байхгүй бол «Нийт төлөх дүн»-тэй яг ижил тоо
+          давхар гардаг байв. Өмнөх үлдэгдэлтэй үед л харуулна: эс бөгөөс
+          «Өмнөх үлдэгдэл 15,000 · Нийт 104,629» хоёрын зөрүү хаанаас
+          гарсан нь ойлгогдохгүй.
+
+          Өмнөх үлдэгдэл:
+            > 0 → өмнөх саруудаас үлдсэн өр
+            < 0 → өмнөх нэхэмжлэлээс ИЛҮҮ төлсөн
+        */}
+        <div className="flex-1">
           {Math.abs(carried) >= 0.5 && (
-            <Row
-              label={carried > 0 ? 'Өмнөх саруудын үлдэгдэл' : 'Төлсөн'}
-              value={carried > 0 ? formatMnt(carried) : `−${formatMnt(-carried)}`}
-            />
+            <dl className="divide-y divide-slate-100 px-5 py-2">
+              <Row label="Энэ сарын нэхэмжлэл" value={formatMnt(bill_amount)} />
+              <Row
+                label={carried > 0 ? 'Өмнөх саруудын үлдэгдэл' : 'Төлсөн'}
+                value={carried > 0 ? formatMnt(carried) : `−${formatMnt(-carried)}`}
+              />
+            </dl>
           )}
-        </dl>
+        </div>
 
         {/* Нийт төлөх дүн — хамгийн чухал тоо тул онцлон харуулна */}
         <div
