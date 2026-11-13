@@ -236,7 +236,17 @@ export function CategoryCard({ state, hasMeter, label, flatNumber, account, area
                   {hasTwoMeters ? 'Нийт зарцуулалт' : 'Зарцуулалт'}
                 </td>
                 <td className="px-5 py-2 text-right font-bold tabular-nums text-slate-900">
-                  {formatReading(usage_amount)}
+                  {/*
+                    Цахилгаанд АЙЛД заалтын цэвэр зөрүүг харуулна (СӨХ-ийн
+                    шийдвэр). Төлбөр нь алдагдлын коэффициент (1.025)
+                    орсон кВт·ц-аар бодогддог — `usage_amount` нь тэр
+                    утга, админд хэвээр харагдана.
+                  */}
+                  {formatReading(
+                    !hasTwoMeters && prev_reading !== null && current_reading !== null
+                      ? Math.round((current_reading - prev_reading) * 100) / 100
+                      : usage_amount,
+                  )}
                   {hasTwoMeters && ' м³'}
                 </td>
               </tr>
